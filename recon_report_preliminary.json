@@ -1,0 +1,311 @@
+{
+  "timestamp": "2026-03-10T00:00:00.000Z",
+  "source": "web_search_intelligence",
+  "note": "Este reporte fue generado mediante investigacion web (sin acceso directo al sitio). Ejecuta recon_web.js o recon_api_probe.js localmente para obtener datos completos.",
+
+  "platform": {
+    "name": "Gesdeportiva",
+    "developer": "Indalweb Internet S.L.",
+    "location": "El Ejido, Almeria, Spain",
+    "website": "https://www.gesdeportiva.es",
+    "established": "20+ years",
+    "sport": "Basketball",
+    "stack_probable": "Angular/Ionic SPA + ASP.NET backend",
+    "description": "Sistema integral de gestion para federaciones y ligas de baloncesto. Incluye acta digital, gestion de competiciones, estadisticas, app de aficion."
+  },
+
+  "federation": {
+    "name": "FEBAMBA - Federacion de Basquetbol del Area Metropolitana de Buenos Aires",
+    "parent": "CABB - Confederacion Argentina de Basquetbol",
+    "country": "Argentina",
+    "gesdeportiva_since": 2019,
+    "note": "FEBAMBA fue una de las primeras federaciones sudamericanas en adoptar Gesdeportiva"
+  },
+
+  "domains_discovered": {
+    "estadisticas_portal": {
+      "url": "https://estadisticascabb.gesdeportiva.es/",
+      "type": "SPA (JavaScript required)",
+      "stack": "Angular/Ionic (probable)",
+      "description": "Portal de estadisticas publico. Single Page Application que consume API REST interna.",
+      "indexed_routes": [
+        "/",
+        "/proximos-partidos",
+        "/proximos-partidos?partido=292664",
+        "/proximos-partidos?partido=143121",
+        "/errores.html?codigo=500"
+      ]
+    },
+    "competiciones_portal": {
+      "url": "https://competicionescabb.gesdeportiva.es/",
+      "type": "ASP.NET Web Forms",
+      "description": "Portal de competiciones. Usa paginas .aspx clasicas.",
+      "indexed_pages": [
+        {
+          "url": "/competicion.aspx?grupo=8459",
+          "description": "Pagina de competicion/grupo"
+        },
+        {
+          "url": "/equipo.aspx?origen=competicion&equipo=73276&grupoEquipo=29628&delegacion=1&competicion=1623",
+          "description": "Pagina de equipo con parametros de contexto"
+        },
+        {
+          "url": "/equipo.aspx?origen=partidos&equipo=31137",
+          "description": "Pagina de equipo - vista partidos"
+        }
+      ],
+      "aspx_parameters_found": {
+        "grupo": "ID del grupo/zona de la competicion",
+        "equipo": "ID del equipo (ej: 73276, 31137)",
+        "grupoEquipo": "ID del grupo al que pertenece el equipo (ej: 29628)",
+        "delegacion": "ID de la delegacion/federacion (ej: 1 = podria ser FEBAMBA)",
+        "competicion": "ID de la competicion/torneo (ej: 1623)",
+        "origen": "Contexto de navegacion (competicion, partidos)",
+        "colorprimario": "Color primario para branding (hex)",
+        "colorsecundario": "Color secundario para branding (hex)",
+        "tamanyofuente": "Tamano de fuente (ej: 10)",
+        "titulos": "Mostrar titulos (si/no)",
+        "fuente": "Font family (ej: Arial, Helvetica, sans-serif)",
+        "clasificacion": "Tipo de clasificacion (ej: cociente)"
+      }
+    },
+    "federation_portal": {
+      "url": "https://fegaba.gesdeportiva.es/federado/",
+      "description": "Portal de federados (ejemplo FEGABA). Patron para otras federaciones."
+    },
+    "clubes_portal": {
+      "url": "https://gesdeportiva.cabb.com.ar/clubes/",
+      "description": "Oficina virtual para clubes bajo CABB (custom domain)"
+    },
+    "other_federations_pattern": [
+      "https://estadisticas{codigo}.gesdeportiva.es/",
+      "https://competiciones{codigo}.gesdeportiva.es/",
+      "https://{codigo}.gesdeportiva.es/"
+    ],
+    "possible_febamba_urls": [
+      "https://estadisticasfebamba.gesdeportiva.es/",
+      "https://competicionesfebamba.gesdeportiva.es/",
+      "https://febamba.gesdeportiva.es/",
+      "https://estadisticascabb.gesdeportiva.es/ (FEBAMBA como delegacion dentro de CABB)"
+    ]
+  },
+
+  "apps": {
+    "aficion_generica": {
+      "name": "Aficion GESDEPORTIVA",
+      "package_android": "com.indalweb.aficionGESDEPORTIVA",
+      "ios_id": "1582764493",
+      "developer": "Indalweb",
+      "description": "App generica para aficionados. Estadisticas, resultados en vivo, mapas de tiro, comparaciones.",
+      "features": [
+        "Agregar equipos y jugadores favoritos",
+        "Resultados y clasificaciones",
+        "Partidos en vivo con estadisticas",
+        "Mejores jugadores",
+        "Mapas de tiro (shooting maps)",
+        "Comparaciones entre jugadores",
+        "Notificaciones push (via Firebase)",
+        "Informacion estadistica por jornada",
+        "Busqueda de competiciones, categorias"
+      ]
+    },
+    "aficion_cabb": {
+      "name": "Aficion CABB",
+      "package_android": "com.indalweb.aficionCABB",
+      "description": "App especifica para CABB/FEBAMBA"
+    },
+    "acta_digital": {
+      "name": "Acta Digital GESDEPORTIVA",
+      "package_android": "com.indalweb.actadigital.gesdeportiva",
+      "description": "App para arbitros. Disponibilidad, designaciones, resultados, contabilidad."
+    }
+  },
+
+  "data_model_inferred": {
+    "entities": {
+      "delegacion": {
+        "description": "Federacion asociada (ej: FEBAMBA dentro de CABB)",
+        "ids_found": [1],
+        "note": "delegacion=1 aparece en URL indexada, podria ser FEBAMBA"
+      },
+      "competicion": {
+        "description": "Torneo o campeonato",
+        "ids_found": [1623],
+        "aliases": ["torneo", "campeonato"]
+      },
+      "grupo": {
+        "description": "Zona o division dentro de una competicion",
+        "ids_found": [8459, 29628],
+        "aliases": ["zona", "division"]
+      },
+      "equipo": {
+        "description": "Club o equipo participante",
+        "ids_found": [73276, 31137],
+        "aliases": ["club"]
+      },
+      "partido": {
+        "description": "Encuentro entre dos equipos",
+        "ids_found": [292664, 143121],
+        "aliases": ["encuentro", "match"]
+      },
+      "jugador": {
+        "description": "Jugador registrado",
+        "aliases": ["persona", "licencia", "ficha"]
+      },
+      "jornada": {
+        "description": "Fecha o ronda del campeonato",
+        "aliases": ["fecha", "ronda"]
+      },
+      "temporada": {
+        "description": "Ano o periodo competitivo",
+        "aliases": ["season"]
+      },
+      "categoria": {
+        "description": "Division por edad/nivel (ej: Mosquitos, U13, U15, Primera, Maxi)",
+        "aliases": ["division"]
+      }
+    },
+    "statistics_available": {
+      "per_match": [
+        "Puntos", "Rebotes", "Asistencias",
+        "Robos", "Perdidas", "Tapas/Bloqueos",
+        "Faltas personales", "Tiros de campo (2pts, 3pts)",
+        "Tiros libres", "Porcentajes de tiro",
+        "Mapas de tiro (shot maps/zonas)",
+        "Play by play (jugada a jugada)"
+      ],
+      "per_player": [
+        "Estadisticas acumuladas por torneo",
+        "Promedios por partido",
+        "Records personales"
+      ],
+      "per_team": [
+        "Clasificacion/Tabla de posiciones",
+        "Estadisticas acumuladas",
+        "Resultados por jornada"
+      ],
+      "comparison_features": [
+        "Comparacion entre jugadores",
+        "Comparacion entre equipos",
+        "Radar charts (inferido del app)"
+      ]
+    }
+  },
+
+  "api_hypothesis": {
+    "note": "Estos son endpoints hipoteticos basados en la estructura de la app y patrones comunes. Deben verificarse con recon_web.js o recon_api_probe.js",
+    "probable_base_urls": [
+      "https://estadisticascabb.gesdeportiva.es/api/",
+      "https://apicabb.gesdeportiva.es/",
+      "https://api.gesdeportiva.es/cabb/"
+    ],
+    "probable_endpoints": [
+      {
+        "path": "/api/delegaciones",
+        "method": "GET",
+        "description": "Lista de federaciones/delegaciones bajo CABB"
+      },
+      {
+        "path": "/api/competiciones?delegacion={id}&temporada={id}",
+        "method": "GET",
+        "description": "Lista de competiciones/torneos por delegacion y temporada"
+      },
+      {
+        "path": "/api/competicion/{id}/grupos",
+        "method": "GET",
+        "description": "Grupos/zonas de una competicion"
+      },
+      {
+        "path": "/api/grupo/{id}/clasificacion",
+        "method": "GET",
+        "description": "Tabla de posiciones de un grupo"
+      },
+      {
+        "path": "/api/grupo/{id}/jornadas",
+        "method": "GET",
+        "description": "Jornadas/fechas de un grupo"
+      },
+      {
+        "path": "/api/grupo/{id}/equipos",
+        "method": "GET",
+        "description": "Equipos de un grupo"
+      },
+      {
+        "path": "/api/equipo/{id}",
+        "method": "GET",
+        "description": "Detalle de un equipo"
+      },
+      {
+        "path": "/api/equipo/{id}/jugadores",
+        "method": "GET",
+        "description": "Plantilla de un equipo"
+      },
+      {
+        "path": "/api/equipo/{id}/partidos",
+        "method": "GET",
+        "description": "Partidos de un equipo"
+      },
+      {
+        "path": "/api/equipo/{id}/estadisticas",
+        "method": "GET",
+        "description": "Estadisticas acumuladas del equipo"
+      },
+      {
+        "path": "/api/partido/{id}",
+        "method": "GET",
+        "description": "Detalle de un partido (box score)"
+      },
+      {
+        "path": "/api/partido/{id}/estadisticas",
+        "method": "GET",
+        "description": "Estadisticas detalladas del partido"
+      },
+      {
+        "path": "/api/partido/{id}/playbyplay",
+        "method": "GET",
+        "description": "Jugada a jugada del partido"
+      },
+      {
+        "path": "/api/partido/{id}/mapatiro",
+        "method": "GET",
+        "description": "Mapa de tiro del partido"
+      },
+      {
+        "path": "/api/jugador/{id}",
+        "method": "GET",
+        "description": "Detalle de un jugador"
+      },
+      {
+        "path": "/api/jugador/{id}/estadisticas",
+        "method": "GET",
+        "description": "Estadisticas del jugador en una competicion"
+      },
+      {
+        "path": "/api/proximos-partidos",
+        "method": "GET",
+        "description": "Proximos partidos programados"
+      },
+      {
+        "path": "/api/categorias",
+        "method": "GET",
+        "description": "Categorias disponibles (Mosquitos, U13, U15, etc)"
+      },
+      {
+        "path": "/api/temporadas",
+        "method": "GET",
+        "description": "Temporadas/anos disponibles"
+      }
+    ],
+    "authentication": {
+      "type": "Probablemente token publico embebido en la app o sin auth para endpoints de lectura",
+      "note": "Las apps de aficion son publicas y no requieren login para ver datos"
+    }
+  },
+
+  "next_steps": [
+    "1. Ejecutar 'node recon_web.js' localmente (necesita Playwright + Chromium)",
+    "2. O ejecutar 'node recon_api_probe.js' localmente (solo necesita Node.js 18+)",
+    "3. Analizar el recon_report.json generado para confirmar endpoints reales",
+    "4. Con los endpoints confirmados, construir el dashboard de analytics"
+  ]
+}
