@@ -1,0 +1,7 @@
+node_modules/
+*.png
+recon_report.json
+apk_extracted/
+*.apk
+urls_encontradas.txt
+apk_strings.json
