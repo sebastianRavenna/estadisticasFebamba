@@ -79,15 +79,17 @@ async function registerDevice() {
   if (!SESSION.uid) SESSION.uid = crypto.randomUUID();
   console.log(`  id_dispositivo: ${SESSION.id_dispositivo}`);
 
-  // Llamar a dispositivo.ashx con accion=acceso y el id_dispositivo real
+  // Llamar a dispositivo.ashx con accion=acceso
+  // Parámetros decodificados del APK ofuscado:
+  //   accion, uid, plataforma, tipo_dispositivo, id_dispositivo, token_push, version
   const url = new URL(`${BASE_URL_STATIC}/dispositivo.ashx`);
   url.searchParams.set('accion', 'acceso');
   url.searchParams.set('uid', SESSION.uid);
+  url.searchParams.set('plataforma', 'android');
   url.searchParams.set('tipo_dispositivo', 'android');
-  url.searchParams.set('tipoDispositivo', 'android');
   url.searchParams.set('id_dispositivo', SESSION.id_dispositivo);
   url.searchParams.set('token_push', '');
-  url.searchParams.set('idioma', 'es');
+  url.searchParams.set('version', '40044');
 
   console.log(`  GET ${url.pathname}?${url.searchParams.toString()}`);
 
