@@ -9,15 +9,23 @@
 const fs = require('fs');
 const path = require('path');
 
+const crypto = require('crypto');
+
 // ============================================================
 // Configuración
 // ============================================================
+const BASE_URL_STATIC = 'https://appaficioncabb.indalweb.net';
 const BASE_URL = 'https://appaficioncabb.indalweb.net/v2';
 const DATA_DIR = path.join(__dirname, 'data');
+const SESSION_FILE = path.join(__dirname, 'data', '.session.json');
 const DELAY_MS = 1500; // Pausa entre requests para no sobrecargar
 
-// ID de dispositivo ficticio (la API lo requiere)
-const DEVICE_ID = 'scraper_febamba_' + Date.now();
+// Sesión (se llena después de registrar dispositivo)
+let SESSION = {
+  id_dispositivo: '',
+  key: '',
+  uid: '',
+};
 
 // ============================================================
 // Utilidades
@@ -36,11 +44,129 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function apiCall(endpoint, params = {}) {
-  const url = new URL(`${BASE_URL}/${endpoint}`);
+function loadSession() {
+  try {
+    if (fs.existsSync(SESSION_FILE)) {
+      SESSION = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
+      console.log(`  Sesión cargada: id_dispositivo=${SESSION.id_dispositivo}, key=${SESSION.key ? '***' : 'vacía'}`);
+      return true;
+    }
+  } catch { /* ignorar */ }
+  return false;
+}
 
-  // Agregar parámetros comunes
-  params.id_dispositivo = params.id_dispositivo || DEVICE_ID;
+function saveSession() {
+  ensureDataDir();
+  fs.writeFileSync(SESSION_FILE, JSON.stringify(SESSION, null, 2), 'utf8');
+  console.log(`  Sesión guardada`);
+}
+
+/**
+ * Paso 0: Registrar dispositivo y obtener id_dispositivo + key
+ * Simula lo que hace la app al abrirse por primera vez
+ */
+async function registerDevice() {
+  console.log('\n--- Registrando dispositivo ---');
+
+  // Intentar cargar sesión previa
+  if (loadSession() && SESSION.id_dispositivo && SESSION.key) {
+    console.log('  Usando sesión previa');
+    return true;
+  }
+
+  // Generar un UID único (como lo hace la app con Firebase)
+  SESSION.uid = crypto.randomUUID();
+
+  // Paso 1: Llamar a dispositivo.ashx con accion=acceso
+  const url = new URL(`${BASE_URL_STATIC}/dispositivo.ashx`);
+  url.searchParams.set('accion', 'acceso');
+  url.searchParams.set('uid', SESSION.uid);
+  url.searchParams.set('tipo_dispositivo', 'android');
+  url.searchParams.set('tipoDispositivo', 'android');
+  url.searchParams.set('id_dispositivo', '');
+
+  console.log(`  GET ${url.pathname}?${url.searchParams.toString()}`);
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
+      },
+    });
+
+    const text = await response.text();
+    console.log(`  Respuesta registro (${response.status}): ${text.substring(0, 500)}`);
+
+    try {
+      const data = JSON.parse(text);
+      if (data.id_dispositivo) {
+        SESSION.id_dispositivo = data.id_dispositivo;
+        SESSION.key = data.key || '';
+        saveSession();
+        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}`);
+        return true;
+      }
+      // Si da error, intentar sin /v2/
+      console.log(`  Resultado: ${data.resultado || 'desconocido'}, error: ${data.error || 'ninguno'}`);
+    } catch {
+      console.log(`  Respuesta no-JSON`);
+    }
+  } catch (err) {
+    console.error(`  Error de red: ${err.message}`);
+  }
+
+  // Intento 2: con /v2/ en la ruta
+  console.log('  Reintentando con /v2/...');
+  const url2 = new URL(`${BASE_URL}/dispositivo.ashx`);
+  url2.searchParams.set('accion', 'acceso');
+  url2.searchParams.set('uid', SESSION.uid);
+  url2.searchParams.set('tipo_dispositivo', 'android');
+  url2.searchParams.set('tipoDispositivo', 'android');
+  url2.searchParams.set('id_dispositivo', '');
+
+  try {
+    const response = await fetch(url2.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
+      },
+    });
+
+    const text = await response.text();
+    console.log(`  Respuesta registro v2 (${response.status}): ${text.substring(0, 500)}`);
+
+    try {
+      const data = JSON.parse(text);
+      if (data.id_dispositivo) {
+        SESSION.id_dispositivo = data.id_dispositivo;
+        SESSION.key = data.key || '';
+        saveSession();
+        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}`);
+        return true;
+      }
+    } catch { /* ignorar */ }
+  } catch (err) {
+    console.error(`  Error de red: ${err.message}`);
+  }
+
+  console.log('  No se pudo registrar automáticamente.');
+  console.log('  Alternativa: abrir la app CABB en el celular, después intentar de nuevo.');
+  return false;
+}
+
+async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
+  const url = new URL(`${baseUrl}/${endpoint}`);
+
+  // Agregar parámetros de sesión
+  if (SESSION.id_dispositivo) {
+    params.id_dispositivo = params.id_dispositivo || SESSION.id_dispositivo;
+  }
+  if (SESSION.key) {
+    params.key = params.key || SESSION.key;
+  }
 
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') {
@@ -68,9 +194,18 @@ async function apiCall(endpoint, params = {}) {
 
     // Intentar parsear como JSON
     try {
-      return JSON.parse(text);
+      const data = JSON.parse(text);
+      // Si la sesión expiró, intentar re-registrar
+      if (data.resultado === 'error' && data.error === 'Sesión caducada') {
+        console.log('  Sesión caducada, re-registrando...');
+        SESSION.id_dispositivo = '';
+        SESSION.key = '';
+        await registerDevice();
+        // Reintentar la llamada
+        return apiCall(endpoint, params, baseUrl);
+      }
+      return data;
     } catch {
-      // Si no es JSON, devolver el texto
       console.log(`  Respuesta no-JSON (${text.length} chars): ${text.substring(0, 200)}`);
       return { _raw: text };
     }
@@ -265,8 +400,18 @@ async function main() {
 
   ensureDataDir();
 
-  // Paso 1: Obtener delegaciones
-  const delegaciones = await getDelegaciones();
+  // Paso 0: Registrar dispositivo
+  const registered = await registerDevice();
+  await sleep(DELAY_MS);
+
+  // Paso 1: Obtener delegaciones (probar con y sin /v2/)
+  console.log('\n--- Obteniendo delegaciones ---');
+  let delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' });
+  if (!delegaciones || delegaciones.resultado === 'error') {
+    // Probar sin /v2/
+    delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' }, BASE_URL_STATIC);
+  }
+  if (delegaciones) saveData('delegaciones.json', delegaciones);
   await sleep(DELAY_MS);
 
   // Paso 2: Obtener competiciones
@@ -274,14 +419,24 @@ async function main() {
   await sleep(DELAY_MS);
 
   if (!competiciones || competiciones.resultado === 'error') {
-    console.log('\nLa API requiere parámetros adicionales. Probando variantes...');
+    console.log('\nProbando variantes de endpoints...');
 
-    // Intentar con diferentes acciones
-    for (const accion of ['competiciones', 'categorias', 'temporadas']) {
-      console.log(`\nProbando accion=${accion}...`);
-      const result = await apiCall('categoria.ashx', { accion });
-      if (result && result.resultado !== 'error') {
-        saveData(`probe_${accion}.json`, result);
+    // Probar diferentes endpoints y acciones
+    const probes = [
+      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL],
+      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_STATIC],
+      ['categoria.ashx', { accion: 'categorias' }, BASE_URL],
+      ['categoria.ashx', { accion: 'categorias' }, BASE_URL_STATIC],
+    ];
+
+    for (const [endpoint, params, base] of probes) {
+      console.log(`\nProbando ${base}/${endpoint}?accion=${params.accion}...`);
+      const result = await apiCall(endpoint, params, base);
+      if (result) {
+        saveData(`probe_${params.accion}_${base === BASE_URL ? 'v2' : 'static'}.json`, result);
+        if (result.resultado === 'ok' || result.resultado !== 'error') {
+          console.log('  Encontrado endpoint funcional!');
+        }
       }
       await sleep(DELAY_MS);
     }
