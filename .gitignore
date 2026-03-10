@@ -5,3 +5,6 @@ apk_extracted/
 *.apk
 urls_encontradas.txt
 apk_strings.json
+data/scraped_data.json
+data/scrape_summary.json
+page_*.html

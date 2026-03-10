@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "source": "Gesdeportiva - CABB/FEBAMBA",
+    "generated": "2026-03-10",
+    "note": "Datos de muestra basados en estructura real del portal. Reemplazar con datos reales usando scraper.js"
+  },
+  "competition": {
+    "id": 1623,
+    "grupoId": 8459,
+    "name": "Torneo Apertura FEBAMBA 2025",
+    "category": "Primera Division Masculina",
+    "season": "2025",
+    "delegacion": "FEBAMBA"
+  },
+  "standings": [
+    {"pos": 1, "team": "Club Obras Sanitarias", "teamId": "obras", "pj": 22, "pg": 19, "pp": 3, "pf": 1782, "pc": 1540, "dif": 242, "pts": 41, "streak": "W5"},
+    {"pos": 2, "team": "Club Ferro Carril Oeste", "teamId": "ferro", "pj": 22, "pg": 17, "pp": 5, "pf": 1698, "pc": 1521, "dif": 177, "pts": 39, "streak": "W3"},
+    {"pos": 3, "team": "Club San Lorenzo de Almagro", "teamId": "sanlorenzo", "pj": 22, "pg": 16, "pp": 6, "pf": 1745, "pc": 1602, "dif": 143, "pts": 38, "streak": "L1"},
+    {"pos": 4, "team": "Club Boca Juniors", "teamId": "boca", "pj": 22, "pg": 15, "pp": 7, "pf": 1710, "pc": 1598, "dif": 112, "pts": 37, "streak": "W2"},
+    {"pos": 5, "team": "Club Gimnasia y Esgrima (LP)", "teamId": "gimnasia", "pj": 22, "pg": 13, "pp": 9, "pf": 1665, "pc": 1620, "dif": 45, "pts": 35, "streak": "W1"},
+    {"pos": 6, "team": "Club Italiano", "teamId": "italiano", "pj": 22, "pg": 12, "pp": 10, "pf": 1634, "pc": 1629, "dif": 5, "pts": 34, "streak": "L2"},
+    {"pos": 7, "team": "Club Ciudad de Buenos Aires", "teamId": "ciudad", "pj": 22, "pg": 11, "pp": 11, "pf": 1601, "pc": 1612, "dif": -11, "pts": 33, "streak": "L1"},
+    {"pos": 8, "team": "Club Comunicaciones", "teamId": "comunicaciones", "pj": 22, "pg": 9, "pp": 13, "pf": 1578, "pc": 1643, "dif": -65, "pts": 31, "streak": "W1"},
+    {"pos": 9, "team": "Club River Plate", "teamId": "river", "pj": 22, "pg": 8, "pp": 14, "pf": 1545, "pc": 1668, "dif": -123, "pts": 30, "streak": "L3"},
+    {"pos": 10, "team": "Club Deportivo Vasco da Gama", "teamId": "vasco", "pj": 22, "pg": 6, "pp": 16, "pf": 1498, "pc": 1701, "dif": -203, "pts": 28, "streak": "L2"},
+    {"pos": 11, "team": "Club Deportivo Español", "teamId": "español", "pj": 22, "pg": 5, "pp": 17, "pf": 1467, "pc": 1732, "dif": -265, "pts": 27, "streak": "L5"},
+    {"pos": 12, "team": "Club Defensores de Banfield", "teamId": "banfield", "pj": 22, "pg": 3, "pp": 19, "pf": 1412, "pc": 1769, "dif": -357, "pts": 25, "streak": "L4"}
+  ],
+  "players": [
+    {"id": 1, "name": "Marcos Delía", "team": "Club Obras Sanitarias", "teamId": "obras", "number": 13, "position": "C", "gp": 22, "min": 28.5, "pts": 18.2, "reb": 8.4, "ast": 1.8, "stl": 0.7, "blk": 1.5, "to": 2.1, "fg_pct": 54.2, "tp_pct": 28.6, "ft_pct": 72.3, "fouls": 3.2},
+    {"id": 2, "name": "Nicolás Brussino", "team": "Club Ferro Carril Oeste", "teamId": "ferro", "number": 10, "position": "SF", "gp": 21, "min": 32.1, "pts": 21.5, "reb": 5.2, "ast": 3.8, "stl": 1.4, "blk": 0.3, "to": 2.8, "fg_pct": 46.8, "tp_pct": 38.9, "ft_pct": 84.1, "fouls": 2.5},
+    {"id": 3, "name": "Juan Pablo Vaulet", "team": "Club San Lorenzo de Almagro", "teamId": "sanlorenzo", "number": 7, "position": "SG", "gp": 22, "min": 30.4, "pts": 17.8, "reb": 4.1, "ast": 4.5, "stl": 1.6, "blk": 0.4, "to": 2.3, "fg_pct": 45.1, "tp_pct": 36.2, "ft_pct": 81.5, "fouls": 2.8},
+    {"id": 4, "name": "Facundo Campazzo", "team": "Club Boca Juniors", "teamId": "boca", "number": 5, "position": "PG", "gp": 20, "min": 31.8, "pts": 15.6, "reb": 2.8, "ast": 8.9, "stl": 2.1, "blk": 0.1, "to": 3.2, "fg_pct": 42.3, "tp_pct": 35.7, "ft_pct": 86.4, "fouls": 2.9},
+    {"id": 5, "name": "Gabriel Deck", "team": "Club Obras Sanitarias", "teamId": "obras", "number": 14, "position": "PF", "gp": 22, "min": 29.7, "pts": 19.4, "reb": 6.8, "ast": 3.2, "stl": 1.1, "blk": 0.6, "to": 1.9, "fg_pct": 51.3, "tp_pct": 33.4, "ft_pct": 76.8, "fouls": 2.4},
+    {"id": 6, "name": "Luca Vildoza", "team": "Club Gimnasia y Esgrima (LP)", "teamId": "gimnasia", "number": 17, "position": "PG", "gp": 21, "min": 30.2, "pts": 16.9, "reb": 3.1, "ast": 6.2, "stl": 1.8, "blk": 0.2, "to": 2.7, "fg_pct": 43.5, "tp_pct": 37.8, "ft_pct": 82.9, "fouls": 2.6},
+    {"id": 7, "name": "Patricio Garino", "team": "Club San Lorenzo de Almagro", "teamId": "sanlorenzo", "number": 29, "position": "SF", "gp": 22, "min": 27.6, "pts": 14.3, "reb": 5.5, "ast": 2.9, "stl": 1.5, "blk": 0.5, "to": 1.7, "fg_pct": 47.2, "tp_pct": 39.1, "ft_pct": 79.4, "fouls": 2.3},
+    {"id": 8, "name": "Tayavek Gallizzi", "team": "Club Ferro Carril Oeste", "teamId": "ferro", "number": 41, "position": "C", "gp": 22, "min": 26.3, "pts": 13.8, "reb": 9.1, "ast": 1.4, "stl": 0.5, "blk": 1.8, "to": 1.5, "fg_pct": 56.7, "tp_pct": 0, "ft_pct": 68.2, "fouls": 3.5},
+    {"id": 9, "name": "Máximo Fjellerup", "team": "Club Boca Juniors", "teamId": "boca", "number": 21, "position": "SG", "gp": 22, "min": 28.9, "pts": 15.1, "reb": 4.3, "ast": 3.6, "stl": 1.3, "blk": 0.3, "to": 2.0, "fg_pct": 44.8, "tp_pct": 36.5, "ft_pct": 80.1, "fouls": 2.7},
+    {"id": 10, "name": "Franco Giorgetti", "team": "Club Ciudad de Buenos Aires", "teamId": "ciudad", "number": 8, "position": "PF", "gp": 21, "min": 27.4, "pts": 12.6, "reb": 7.2, "ast": 2.1, "stl": 0.8, "blk": 0.9, "to": 1.8, "fg_pct": 49.5, "tp_pct": 31.2, "ft_pct": 71.6, "fouls": 3.1},
+    {"id": 11, "name": "Federico Aguerre", "team": "Club Italiano", "teamId": "italiano", "number": 3, "position": "PG", "gp": 22, "min": 29.1, "pts": 14.7, "reb": 2.9, "ast": 5.8, "stl": 1.7, "blk": 0.1, "to": 2.5, "fg_pct": 41.9, "tp_pct": 34.6, "ft_pct": 85.3, "fouls": 2.4},
+    {"id": 12, "name": "Leandro Bolmaro", "team": "Club Comunicaciones", "teamId": "comunicaciones", "number": 9, "position": "SG", "gp": 20, "min": 31.5, "pts": 16.2, "reb": 4.7, "ast": 5.1, "stl": 1.4, "blk": 0.4, "to": 2.6, "fg_pct": 44.1, "tp_pct": 33.8, "ft_pct": 78.9, "fouls": 2.8},
+    {"id": 13, "name": "Carlos Delfino", "team": "Club River Plate", "teamId": "river", "number": 11, "position": "SF", "gp": 18, "min": 24.8, "pts": 11.5, "reb": 4.2, "ast": 2.6, "stl": 1.0, "blk": 0.3, "to": 1.4, "fg_pct": 42.7, "tp_pct": 37.3, "ft_pct": 83.6, "fouls": 2.1},
+    {"id": 14, "name": "Santiago Vaulet", "team": "Club Gimnasia y Esgrima (LP)", "teamId": "gimnasia", "number": 22, "position": "SF", "gp": 22, "min": 26.7, "pts": 13.4, "reb": 5.8, "ast": 2.3, "stl": 1.2, "blk": 0.7, "to": 1.6, "fg_pct": 48.3, "tp_pct": 35.1, "ft_pct": 74.5, "fouls": 2.9},
+    {"id": 15, "name": "Martín Leiva", "team": "Club Deportivo Español", "teamId": "español", "number": 15, "position": "PF", "gp": 22, "min": 25.3, "pts": 10.8, "reb": 6.5, "ast": 1.5, "stl": 0.6, "blk": 0.8, "to": 1.9, "fg_pct": 47.1, "tp_pct": 29.8, "ft_pct": 69.4, "fouls": 3.3},
+    {"id": 16, "name": "Nicolás Laprovíttola", "team": "Club Obras Sanitarias", "teamId": "obras", "number": 1, "position": "PG", "gp": 22, "min": 30.8, "pts": 17.1, "reb": 2.5, "ast": 7.3, "stl": 1.5, "blk": 0.1, "to": 2.9, "fg_pct": 44.6, "tp_pct": 40.2, "ft_pct": 88.7, "fouls": 2.2}
+  ],
+  "matches": [
+    {"id": 1, "matchday": 22, "date": "2025-11-15", "home": "Club Obras Sanitarias", "homeId": "obras", "away": "Club Ferro Carril Oeste", "awayId": "ferro", "homeScore": 88, "awayScore": 79, "status": "final"},
+    {"id": 2, "matchday": 22, "date": "2025-11-15", "home": "Club San Lorenzo de Almagro", "homeId": "sanlorenzo", "away": "Club Boca Juniors", "awayId": "boca", "homeScore": 82, "awayScore": 85, "status": "final"},
+    {"id": 3, "matchday": 22, "date": "2025-11-15", "home": "Club Gimnasia y Esgrima (LP)", "homeId": "gimnasia", "away": "Club Italiano", "awayId": "italiano", "homeScore": 76, "awayScore": 71, "status": "final"},
+    {"id": 4, "matchday": 22, "date": "2025-11-15", "home": "Club Ciudad de Buenos Aires", "homeId": "ciudad", "away": "Club Comunicaciones", "awayId": "comunicaciones", "homeScore": 68, "awayScore": 74, "status": "final"},
+    {"id": 5, "matchday": 22, "date": "2025-11-15", "home": "Club Deportivo Vasco da Gama", "homeId": "vasco", "away": "Club River Plate", "awayId": "river", "homeScore": 65, "awayScore": 70, "status": "final"},
+    {"id": 6, "matchday": 22, "date": "2025-11-15", "home": "Club Defensores de Banfield", "homeId": "banfield", "away": "Club Deportivo Español", "awayId": "español", "homeScore": 58, "awayScore": 67, "status": "final"},
+    {"id": 7, "matchday": 21, "date": "2025-11-08", "home": "Club Ferro Carril Oeste", "homeId": "ferro", "away": "Club Boca Juniors", "awayId": "boca", "homeScore": 91, "awayScore": 84, "status": "final"},
+    {"id": 8, "matchday": 21, "date": "2025-11-08", "home": "Club Obras Sanitarias", "homeId": "obras", "away": "Club San Lorenzo de Almagro", "awayId": "sanlorenzo", "homeScore": 95, "awayScore": 88, "status": "final"},
+    {"id": 9, "matchday": 21, "date": "2025-11-08", "home": "Club Italiano", "homeId": "italiano", "away": "Club Ciudad de Buenos Aires", "awayId": "ciudad", "homeScore": 77, "awayScore": 80, "status": "final"},
+    {"id": 10, "matchday": 21, "date": "2025-11-08", "home": "Club Comunicaciones", "homeId": "comunicaciones", "away": "Club Gimnasia y Esgrima (LP)", "awayId": "gimnasia", "homeScore": 72, "awayScore": 69, "status": "final"},
+    {"id": 11, "matchday": 20, "date": "2025-11-01", "home": "Club Boca Juniors", "homeId": "boca", "away": "Club Obras Sanitarias", "awayId": "obras", "homeScore": 78, "awayScore": 82, "status": "final"},
+    {"id": 12, "matchday": 20, "date": "2025-11-01", "home": "Club San Lorenzo de Almagro", "homeId": "sanlorenzo", "away": "Club Ferro Carril Oeste", "awayId": "ferro", "homeScore": 86, "awayScore": 83, "status": "final"},
+    {"id": 13, "matchday": 19, "date": "2025-10-25", "home": "Club Obras Sanitarias", "homeId": "obras", "away": "Club Gimnasia y Esgrima (LP)", "awayId": "gimnasia", "homeScore": 92, "awayScore": 78, "status": "final"},
+    {"id": 14, "matchday": 19, "date": "2025-10-25", "home": "Club Ferro Carril Oeste", "homeId": "ferro", "away": "Club Italiano", "awayId": "italiano", "homeScore": 85, "awayScore": 72, "status": "final"},
+    {"id": 15, "matchday": 18, "date": "2025-10-18", "home": "Club San Lorenzo de Almagro", "homeId": "sanlorenzo", "away": "Club Comunicaciones", "awayId": "comunicaciones", "homeScore": 90, "awayScore": 76, "status": "final"},
+    {"id": 16, "matchday": 18, "date": "2025-10-18", "home": "Club Boca Juniors", "homeId": "boca", "away": "Club River Plate", "awayId": "river", "homeScore": 81, "awayScore": 68, "status": "final"}
+  ],
+  "teamColors": {
+    "obras": {"primary": "#003DA5", "secondary": "#FFFFFF"},
+    "ferro": {"primary": "#006B3F", "secondary": "#FFFFFF"},
+    "sanlorenzo": {"primary": "#E4002B", "secondary": "#003DA5"},
+    "boca": {"primary": "#003DA5", "secondary": "#FFD700"},
+    "gimnasia": {"primary": "#FFFFFF", "secondary": "#003DA5"},
+    "italiano": {"primary": "#003DA5", "secondary": "#CF0A2C"},
+    "ciudad": {"primary": "#FF6600", "secondary": "#000000"},
+    "comunicaciones": {"primary": "#FF0000", "secondary": "#FFFFFF"},
+    "river": {"primary": "#FFFFFF", "secondary": "#E4002B"},
+    "vasco": {"primary": "#000000", "secondary": "#FFFFFF"},
+    "español": {"primary": "#FF0000", "secondary": "#FFD700"},
+    "banfield": {"primary": "#006B3F", "secondary": "#FFFFFF"}
+  }
+}
