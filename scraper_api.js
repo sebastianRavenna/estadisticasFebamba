@@ -21,8 +21,9 @@ const SESSION_FILE = path.join(__dirname, 'data', '.session.json');
 const DELAY_MS = 1500; // Pausa entre requests para no sobrecargar
 
 // Sesión (se llena después de registrar dispositivo)
+// id_dispositivo obtenido de la app CABB real instalada en el celular
 let SESSION = {
-  id_dispositivo: '',
+  id_dispositivo: '07f2c40994f8705d',
   key: '',
   uid: '',
 };
@@ -68,23 +69,23 @@ function saveSession() {
 async function registerDevice() {
   console.log('\n--- Registrando dispositivo ---');
 
-  // Intentar cargar sesión previa
+  // Intentar cargar sesión previa con key válida
   if (loadSession() && SESSION.id_dispositivo && SESSION.key) {
     console.log('  Usando sesión previa');
     return true;
   }
 
-  // Generar un UID único (como lo hace la app con Firebase)
-  SESSION.uid = crypto.randomUUID();
+  // Usar el id_dispositivo real del celular
+  if (!SESSION.uid) SESSION.uid = crypto.randomUUID();
+  console.log(`  id_dispositivo: ${SESSION.id_dispositivo}`);
 
-  // Paso 1: Llamar a dispositivo.ashx con accion=acceso
-  // Parámetros completos que envía la app (descubiertos del APK):
+  // Llamar a dispositivo.ashx con accion=acceso y el id_dispositivo real
   const url = new URL(`${BASE_URL_STATIC}/dispositivo.ashx`);
   url.searchParams.set('accion', 'acceso');
   url.searchParams.set('uid', SESSION.uid);
   url.searchParams.set('tipo_dispositivo', 'android');
   url.searchParams.set('tipoDispositivo', 'android');
-  url.searchParams.set('id_dispositivo', '');
+  url.searchParams.set('id_dispositivo', SESSION.id_dispositivo);
   url.searchParams.set('token_push', '');
   url.searchParams.set('idioma', 'es');
 
@@ -100,19 +101,20 @@ async function registerDevice() {
     });
 
     const text = await response.text();
-    console.log(`  Respuesta registro (${response.status}): ${text.substring(0, 500)}`);
+    console.log(`  Respuesta registro (${response.status}): ${text.substring(0, 800)}`);
 
     try {
       const data = JSON.parse(text);
-      if (data.id_dispositivo) {
-        SESSION.id_dispositivo = data.id_dispositivo;
+      if (data.resultado === 'ok' || data.key) {
         SESSION.key = data.key || '';
+        if (data.id_dispositivo) SESSION.id_dispositivo = data.id_dispositivo;
         saveSession();
-        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}`);
+        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
         return true;
       }
-      // Si da error, intentar sin /v2/
       console.log(`  Resultado: ${data.resultado || 'desconocido'}, error: ${data.error || 'ninguno'}`);
+      // Guardar la respuesta completa para debug
+      saveData('debug_registro.json', data);
     } catch {
       console.log(`  Respuesta no-JSON`);
     }
@@ -120,46 +122,10 @@ async function registerDevice() {
     console.error(`  Error de red: ${err.message}`);
   }
 
-  // Intento 2: con /v2/ en la ruta
-  console.log('  Reintentando con /v2/...');
-  const url2 = new URL(`${BASE_URL}/dispositivo.ashx`);
-  url2.searchParams.set('accion', 'acceso');
-  url2.searchParams.set('uid', SESSION.uid);
-  url2.searchParams.set('tipo_dispositivo', 'android');
-  url2.searchParams.set('tipoDispositivo', 'android');
-  url2.searchParams.set('id_dispositivo', '');
-  url2.searchParams.set('token_push', '');
-  url2.searchParams.set('idioma', 'es');
-
-  try {
-    const response = await fetch(url2.toString(), {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
-      },
-    });
-
-    const text = await response.text();
-    console.log(`  Respuesta registro v2 (${response.status}): ${text.substring(0, 500)}`);
-
-    try {
-      const data = JSON.parse(text);
-      if (data.id_dispositivo) {
-        SESSION.id_dispositivo = data.id_dispositivo;
-        SESSION.key = data.key || '';
-        saveSession();
-        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}`);
-        return true;
-      }
-    } catch { /* ignorar */ }
-  } catch (err) {
-    console.error(`  Error de red: ${err.message}`);
-  }
-
-  console.log('  No se pudo registrar automáticamente.');
-  console.log('  Alternativa: abrir la app CABB en el celular, después intentar de nuevo.');
-  return false;
+  // Si no obtuvimos key, seguir intentando con los endpoints sin key
+  // Algunos endpoints pueden funcionar solo con id_dispositivo
+  console.log('  No se obtuvo key, intentando sin key...');
+  return SESSION.id_dispositivo ? true : false;
 }
 
 async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
