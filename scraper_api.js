@@ -2,13 +2,15 @@
  * Scraper para la API de Indalweb/GesDeportiva - CABB/FEBAMBA
  * Usa la API directa descubierta desde el APK de la app CABB
  *
+ * IMPORTANTE: La API usa POST con Content-Type: application/x-www-form-urlencoded
+ * (descubierto deofuscando el método GetJSON del APK)
+ *
  * Uso: node scraper_api.js
  * Genera archivos JSON en data/
  */
 
 const fs = require('fs');
 const path = require('path');
-
 const crypto = require('crypto');
 
 // ============================================================
@@ -18,10 +20,11 @@ const BASE_URL_STATIC = 'https://appaficioncabb.indalweb.net';
 const BASE_URL = 'https://appaficioncabb.indalweb.net/v2';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSION_FILE = path.join(__dirname, 'data', '.session.json');
-const DELAY_MS = 1500; // Pausa entre requests para no sobrecargar
+const DELAY_MS = 1500;
 
-// Sesión (se llena después de registrar dispositivo)
-// id_dispositivo obtenido de la app CABB real instalada en el celular
+// Versión de la app: 4.0.44 → versionAPPNumerico = 040044 → parseInt = 40044
+const APP_VERSION = '40044';
+
 let SESSION = {
   id_dispositivo: '07f2c40994f8705d',
   key: '',
@@ -63,75 +66,92 @@ function saveSession() {
 }
 
 /**
+ * Hacer una llamada POST con application/x-www-form-urlencoded
+ * Así es como la app real hace las llamadas (método GetJSON deofuscado)
+ */
+async function postAPI(url, params) {
+  const body = new URLSearchParams(params).toString();
+  console.log(`  POST ${url}`);
+  console.log(`  Body: ${body.substring(0, 200)}${body.length > 200 ? '...' : ''}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json, text/plain, */*',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
+    },
+    body: body,
+  });
+
+  if (!response.ok) {
+    console.error(`  Error HTTP ${response.status}: ${response.statusText}`);
+    return null;
+  }
+
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.log(`  Respuesta no-JSON (${text.length} chars): ${text.substring(0, 200)}`);
+    return { _raw: text };
+  }
+}
+
+/**
  * Paso 0: Registrar dispositivo y obtener id_dispositivo + key
- * Simula lo que hace la app al abrirse por primera vez
  */
 async function registerDevice() {
   console.log('\n--- Registrando dispositivo ---');
 
-  // Intentar cargar sesión previa con key válida
   if (loadSession() && SESSION.id_dispositivo && SESSION.key) {
     console.log('  Usando sesión previa');
     return true;
   }
 
-  // Usar el id_dispositivo real del celular
   if (!SESSION.uid) SESSION.uid = crypto.randomUUID();
   console.log(`  id_dispositivo: ${SESSION.id_dispositivo}`);
+  console.log(`  uid: ${SESSION.uid}`);
 
-  // Llamar a dispositivo.ashx con accion=acceso
-  // Parámetros decodificados del APK ofuscado:
-  //   accion, uid, plataforma, tipo_dispositivo, id_dispositivo, token_push, version
-  const url = new URL(`${BASE_URL_STATIC}/dispositivo.ashx`);
-  url.searchParams.set('accion', 'acceso');
-  url.searchParams.set('uid', SESSION.uid);
-  url.searchParams.set('plataforma', 'android');
-  url.searchParams.set('tipo_dispositivo', 'android');
-  url.searchParams.set('id_dispositivo', SESSION.id_dispositivo);
-  url.searchParams.set('token_push', '');
-  url.searchParams.set('version', '40044');
-
-  console.log(`  GET ${url.pathname}?${url.searchParams.toString()}`);
+  // Llamar a dispositivo.ashx con POST (como lo hace la app real)
+  const url = `${BASE_URL_STATIC}/dispositivo.ashx`;
+  const params = {
+    accion: 'acceso',
+    uid: SESSION.uid,
+    plataforma: 'android',
+    tipo_dispositivo: 'android',
+    id_dispositivo: SESSION.id_dispositivo,
+    token_push: '',
+    version: APP_VERSION,
+  };
 
   try {
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
-      },
-    });
+    const data = await postAPI(url, params);
+    if (data) {
+      saveData('debug_registro.json', data);
 
-    const text = await response.text();
-    console.log(`  Respuesta registro (${response.status}): ${text.substring(0, 800)}`);
-
-    try {
-      const data = JSON.parse(text);
-      if (data.resultado === 'ok' || data.key) {
+      if (data.resultado === 'correcto' || data.key) {
         SESSION.key = data.key || '';
         if (data.id_dispositivo) SESSION.id_dispositivo = data.id_dispositivo;
         saveSession();
-        console.log(`  Dispositivo registrado: id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
+        console.log(`  Dispositivo registrado! id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
         return true;
       }
       console.log(`  Resultado: ${data.resultado || 'desconocido'}, error: ${data.error || 'ninguno'}`);
-      // Guardar la respuesta completa para debug
-      saveData('debug_registro.json', data);
-    } catch {
-      console.log(`  Respuesta no-JSON`);
     }
   } catch (err) {
     console.error(`  Error de red: ${err.message}`);
   }
 
-  // Si no obtuvimos key, seguir intentando con los endpoints sin key
-  // Algunos endpoints pueden funcionar solo con id_dispositivo
   console.log('  No se obtuvo key, intentando sin key...');
   return SESSION.id_dispositivo ? true : false;
 }
 
+/**
+ * Llamada genérica a la API usando POST
+ */
 async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
-  const url = new URL(`${baseUrl}/${endpoint}`);
+  const url = `${baseUrl}/${endpoint}`;
 
   // Agregar parámetros de sesión
   if (SESSION.id_dispositivo) {
@@ -141,47 +161,17 @@ async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
     params.key = params.key || SESSION.key;
   }
 
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') {
-      url.searchParams.set(key, String(value));
-    }
-  }
-
-  console.log(`  GET ${url.pathname}?${url.searchParams.toString()}`);
-
   try {
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
-      },
-    });
+    const data = await postAPI(url, params);
 
-    if (!response.ok) {
-      console.error(`  Error HTTP ${response.status}: ${response.statusText}`);
-      return null;
+    if (data && data.resultado === 'error' && data.error === 'Sesión caducada') {
+      console.log('  Sesión caducada, re-registrando...');
+      SESSION.key = '';
+      await registerDevice();
+      return apiCall(endpoint, params, baseUrl);
     }
 
-    const text = await response.text();
-
-    // Intentar parsear como JSON
-    try {
-      const data = JSON.parse(text);
-      // Si la sesión expiró, intentar re-registrar
-      if (data.resultado === 'error' && data.error === 'Sesión caducada') {
-        console.log('  Sesión caducada, re-registrando...');
-        SESSION.id_dispositivo = '';
-        SESSION.key = '';
-        await registerDevice();
-        // Reintentar la llamada
-        return apiCall(endpoint, params, baseUrl);
-      }
-      return data;
-    } catch {
-      console.log(`  Respuesta no-JSON (${text.length} chars): ${text.substring(0, 200)}`);
-      return { _raw: text };
-    }
+    return data;
   } catch (err) {
     console.error(`  Error de red: ${err.message}`);
     return null;
@@ -192,9 +182,6 @@ async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
 // Funciones de scraping
 // ============================================================
 
-/**
- * 1. Obtener lista de delegaciones (federaciones provinciales)
- */
 async function getDelegaciones() {
   console.log('\n--- Obteniendo delegaciones ---');
   const data = await apiCall('delegaciones.ashx', { accion: 'delegaciones' });
@@ -202,9 +189,6 @@ async function getDelegaciones() {
   return data;
 }
 
-/**
- * 2. Obtener competiciones/categorías
- */
 async function getCompeticiones(params = {}) {
   console.log('\n--- Obteniendo competiciones ---');
   const data = await apiCall('categoria.ashx', {
@@ -215,9 +199,6 @@ async function getCompeticiones(params = {}) {
   return data;
 }
 
-/**
- * 3. Obtener fases y grupos de una competición
- */
 async function getFasesGrupos(idCategoriaCompeticion) {
   console.log(`\n--- Obteniendo fases/grupos para competicion ${idCategoriaCompeticion} ---`);
   const data = await apiCall('categoria.ashx', {
@@ -227,9 +208,6 @@ async function getFasesGrupos(idCategoriaCompeticion) {
   return data;
 }
 
-/**
- * 4. Obtener clasificación (tabla de posiciones)
- */
 async function getClasificacion(idCategoriaCompeticion, idFase, idGrupo) {
   console.log(`\n--- Obteniendo clasificación (comp=${idCategoriaCompeticion}, fase=${idFase}, grupo=${idGrupo}) ---`);
   const data = await apiCall('categoria.ashx', {
@@ -241,9 +219,6 @@ async function getClasificacion(idCategoriaCompeticion, idFase, idGrupo) {
   return data;
 }
 
-/**
- * 5. Obtener jornadas/fechas
- */
 async function getJornadas(idCategoriaCompeticion, idFase, idGrupo) {
   console.log(`\n--- Obteniendo jornadas (comp=${idCategoriaCompeticion}, fase=${idFase}, grupo=${idGrupo}) ---`);
   const data = await apiCall('categoria.ashx', {
@@ -255,9 +230,6 @@ async function getJornadas(idCategoriaCompeticion, idFase, idGrupo) {
   return data;
 }
 
-/**
- * 6. Obtener lista de partidos
- */
 async function getPartidos(idCategoriaCompeticion, idFase, idGrupo) {
   console.log(`\n--- Obteniendo partidos ---`);
   const data = await apiCall('partidos.ashx', {
@@ -269,9 +241,6 @@ async function getPartidos(idCategoriaCompeticion, idFase, idGrupo) {
   return data;
 }
 
-/**
- * 7. Obtener detalle de un partido
- */
 async function getPartido(idPartido) {
   console.log(`\n--- Obteniendo partido ${idPartido} ---`);
   const data = await apiCall('partido.ashx', {
@@ -281,9 +250,6 @@ async function getPartido(idPartido) {
   return data;
 }
 
-/**
- * 8. Obtener estadísticas de un partido
- */
 async function getEstadisticasPartido(idPartido) {
   console.log(`\n--- Obteniendo estadísticas partido ${idPartido} ---`);
   const data = await apiCall('estadisticas.ashx', {
@@ -293,9 +259,6 @@ async function getEstadisticasPartido(idPartido) {
   return data;
 }
 
-/**
- * 9. Obtener estadísticas de equipo en una competición
- */
 async function getEstadisticasEquipo(idEquipo, idCategoriaCompeticion, idFase, idGrupo) {
   console.log(`\n--- Obteniendo estadísticas equipo ${idEquipo} ---`);
   const data = await apiCall('estadisticas.ashx', {
@@ -308,9 +271,6 @@ async function getEstadisticasEquipo(idEquipo, idCategoriaCompeticion, idFase, i
   return data;
 }
 
-/**
- * 10. Obtener estadísticas de un jugador
- */
 async function getEstadisticasJugador(idJugador, idCategoriaCompeticion, idFase, idGrupo) {
   console.log(`\n--- Obteniendo estadísticas jugador ${idJugador} ---`);
   const data = await apiCall('estadisticas.ashx', {
@@ -323,9 +283,6 @@ async function getEstadisticasJugador(idJugador, idCategoriaCompeticion, idFase,
   return data;
 }
 
-/**
- * 11. Obtener detalle de equipo
- */
 async function getEquipo(idEquipo) {
   console.log(`\n--- Obteniendo equipo ${idEquipo} ---`);
   const data = await apiCall('equipo.ashx', {
@@ -335,9 +292,6 @@ async function getEquipo(idEquipo) {
   return data;
 }
 
-/**
- * 12. Obtener jugadores de un equipo
- */
 async function getJugadores(idEquipo, idCategoriaCompeticion) {
   console.log(`\n--- Obteniendo jugadores equipo ${idEquipo} ---`);
   const data = await apiCall('jugadores.ashx', {
@@ -348,13 +302,9 @@ async function getJugadores(idEquipo, idCategoriaCompeticion) {
   return data;
 }
 
-/**
- * 13. Buscar
- */
 async function buscar(tipo, texto) {
   console.log(`\n--- Buscando ${tipo}: "${texto}" ---`);
-  const endpoint = 'busqueda.ashx';
-  const data = await apiCall(endpoint, {
+  const data = await apiCall('busqueda.ashx', {
     accion: `buscar${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`,
     texto: texto,
   });
@@ -370,18 +320,18 @@ async function main() {
   console.log('===========================================');
   console.log(`Base URL: ${BASE_URL}`);
   console.log(`Data dir: ${DATA_DIR}`);
+  console.log(`Método: POST (application/x-www-form-urlencoded)`);
 
   ensureDataDir();
 
   // Paso 0: Registrar dispositivo
-  const registered = await registerDevice();
+  await registerDevice();
   await sleep(DELAY_MS);
 
-  // Paso 1: Obtener delegaciones (probar con y sin /v2/)
+  // Paso 1: Obtener delegaciones
   console.log('\n--- Obteniendo delegaciones ---');
   let delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' });
   if (!delegaciones || delegaciones.resultado === 'error') {
-    // Probar sin /v2/
     delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' }, BASE_URL_STATIC);
   }
   if (delegaciones) saveData('delegaciones.json', delegaciones);
@@ -394,12 +344,10 @@ async function main() {
   if (!competiciones || competiciones.resultado === 'error') {
     console.log('\nProbando variantes de endpoints...');
 
-    // Probar diferentes endpoints y acciones
     const probes = [
       ['categoria.ashx', { accion: 'competiciones' }, BASE_URL],
       ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_STATIC],
       ['categoria.ashx', { accion: 'categorias' }, BASE_URL],
-      ['categoria.ashx', { accion: 'categorias' }, BASE_URL_STATIC],
     ];
 
     for (const [endpoint, params, base] of probes) {
@@ -407,7 +355,7 @@ async function main() {
       const result = await apiCall(endpoint, params, base);
       if (result) {
         saveData(`probe_${params.accion}_${base === BASE_URL ? 'v2' : 'static'}.json`, result);
-        if (result.resultado === 'ok' || result.resultado !== 'error') {
+        if (result.resultado === 'correcto') {
           console.log('  Encontrado endpoint funcional!');
         }
       }
@@ -415,9 +363,8 @@ async function main() {
     }
   }
 
-  // Paso 3: Si tenemos competiciones, obtener fases/grupos de la primera
+  // Paso 3: Si tenemos competiciones, obtener fases/grupos
   if (competiciones && Array.isArray(competiciones.datos)) {
-    // Buscar competiciones de FEBAMBA
     const febambaComps = competiciones.datos.filter(c =>
       c.NombreDelegacion?.includes('Buenos Aires') ||
       c.NombreCompeticion?.includes('FEBAMBA') ||
@@ -432,14 +379,12 @@ async function main() {
 
       console.log(`\nCompeticion: ${comp.NombreCompeticion || comp.Nombre || JSON.stringify(comp)}`);
 
-      // Obtener fases y grupos
       const fasesGrupos = await getFasesGrupos(compId);
       await sleep(DELAY_MS);
 
       if (fasesGrupos && fasesGrupos.datos) {
         saveData(`fases_grupos_${compId}.json`, fasesGrupos);
 
-        // Para cada fase/grupo, obtener clasificación y partidos
         const fases = fasesGrupos.datos.ListaFases || fasesGrupos.datos.Fases || [fasesGrupos.datos];
         for (const fase of (Array.isArray(fases) ? fases : [fases])) {
           const faseId = fase.IdFase || fase.Id;
@@ -448,17 +393,14 @@ async function main() {
           for (const grupo of (Array.isArray(grupos) ? grupos : [grupos])) {
             const grupoId = grupo.IdGrupo || grupo.Id;
 
-            // Clasificación
             const clasificacion = await getClasificacion(compId, faseId, grupoId);
             if (clasificacion) saveData(`clasificacion_${compId}_${faseId}_${grupoId}.json`, clasificacion);
             await sleep(DELAY_MS);
 
-            // Partidos
             const partidos = await getPartidos(compId, faseId, grupoId);
             if (partidos) saveData(`partidos_${compId}_${faseId}_${grupoId}.json`, partidos);
             await sleep(DELAY_MS);
 
-            // Para los primeros 3 partidos, obtener estadísticas
             if (partidos && partidos.datos) {
               const listaPartidos = Array.isArray(partidos.datos) ? partidos.datos : partidos.datos.ListaPartidos || [];
               const partidosConStats = listaPartidos
@@ -480,20 +422,13 @@ async function main() {
     }
   }
 
-  // Paso 4: Probe adicional - intentar obtener datos sin IDs específicos
-  console.log('\n--- Probe adicional ---');
+  // Paso 4: Búsquedas
+  console.log('\n--- Búsquedas ---');
 
-  // Próximos partidos
-  const proximos = await apiCall('partidos.ashx', { accion: 'proximos' });
-  if (proximos) saveData('proximos_partidos.json', proximos);
-  await sleep(DELAY_MS);
-
-  // Buscar FEBAMBA
   const busquedaFebamba = await buscar('Categoria', 'FEBAMBA');
   if (busquedaFebamba) saveData('busqueda_febamba.json', busquedaFebamba);
   await sleep(DELAY_MS);
 
-  // Buscar Buenos Aires
   const busquedaBA = await buscar('Categoria', 'Buenos Aires');
   if (busquedaBA) saveData('busqueda_buenos_aires.json', busquedaBA);
 
@@ -502,7 +437,6 @@ async function main() {
   console.log('===========================================');
   console.log(`Archivos guardados en: ${DATA_DIR}/`);
 
-  // Listar archivos generados
   const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
   console.log(`Total archivos: ${files.length}`);
   files.forEach(f => {
