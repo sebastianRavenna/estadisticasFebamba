@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FEBAMBA - Dashboard de Estadisticas</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f1923;
+      --bg-secondary: #1a2634;
+      --bg-card: #1e2d3d;
+      --bg-hover: #253847;
+      --accent: #ff6b35;
+      --accent2: #4ecdc4;
+      --accent3: #ffe66d;
+      --text-primary: #e8edf2;
+      --text-secondary: #8899aa;
+      --text-muted: #5a6a7a;
+      --border: #2a3a4a;
+      --win: #4ecdc4;
+      --loss: #ff6b6b;
+      --gold: #ffd700;
+      --silver: #c0c0c0;
+      --bronze: #cd7f32;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+      border-bottom: 2px solid var(--accent);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .data-badge {
+      background: var(--bg-hover);
+      padding: 0.3rem 0.8rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      color: var(--accent2);
+      border: 1px solid var(--accent2);
+    }
+
+    /* Navigation */
+    .nav-tabs {
+      display: flex;
+      background: var(--bg-secondary);
+      padding: 0 2rem;
+      gap: 0;
+      overflow-x: auto;
+    }
+
+    .nav-tab {
+      padding: 0.8rem 1.5rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      border-bottom: 3px solid transparent;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .nav-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .nav-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* Layout */
+    .content { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+    .full-width { grid-column: 1 / -1; }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .card-body { padding: 1rem 1.25rem; }
+
+    /* Standings Table */
+    .standings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .standings-table th {
+      text-align: left;
+      padding: 0.6rem 0.5rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .standings-table th.num { text-align: center; }
+
+    .standings-table td {
+      padding: 0.6rem 0.5rem;
+      border-bottom: 1px solid rgba(42, 58, 74, 0.5);
+    }
+
+    .standings-table td.num { text-align: center; }
+
+    .standings-table tr:hover { background: var(--bg-hover); }
+
+    .standings-table tr.playoff { border-left: 3px solid var(--accent2); }
+    .standings-table tr.relegation { border-left: 3px solid var(--loss); }
+
+    .pos-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .pos-1 { background: rgba(255, 215, 0, 0.2); color: var(--gold); }
+    .pos-2 { background: rgba(192, 192, 192, 0.2); color: var(--silver); }
+    .pos-3 { background: rgba(205, 127, 50, 0.2); color: var(--bronze); }
+
+    .team-name {
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .team-name:hover { color: var(--accent); }
+
+    .streak-w { color: var(--win); font-weight: 600; }
+    .streak-l { color: var(--loss); font-weight: 600; }
+
+    .diff-pos { color: var(--win); }
+    .diff-neg { color: var(--loss); }
+
+    /* Stat Cards */
+    .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+
+    .stat-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+    }
+
+    .stat-card .label {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-card .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .stat-card .sub {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+
+    /* Player Stats Table */
+    .player-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    .player-table th {
+      text-align: center;
+      padding: 0.5rem 0.4rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .player-table th:hover { color: var(--accent); }
+    .player-table th.active { color: var(--accent); }
+    .player-table th.left { text-align: left; }
+
+    .player-table td {
+      text-align: center;
+      padding: 0.5rem 0.4rem;
+      border-bottom: 1px solid rgba(42, 58, 74, 0.3);
+    }
+
+    .player-table td.left { text-align: left; }
+
+    .player-table tr:hover { background: var(--bg-hover); }
+    .player-table tr.highlight { background: rgba(255, 107, 53, 0.1); }
+
+    .player-name {
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .player-name:hover { color: var(--accent); }
+
+    .player-team {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+
+    /* Chart container */
+    .chart-container {
+      position: relative;
+      height: 300px;
+      padding: 0.5rem;
+    }
+
+    .chart-container-lg { height: 400px; }
+
+    /* Match cards */
+    .match-card {
+      display: flex;
+      align-items: center;
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid rgba(42, 58, 74, 0.5);
+      gap: 1rem;
+    }
+
+    .match-card:last-child { border-bottom: none; }
+    .match-card:hover { background: var(--bg-hover); }
+
+    .match-date {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      min-width: 70px;
+    }
+
+    .match-teams {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .match-team {
+      flex: 1;
+      font-size: 0.85rem;
+    }
+
+    .match-team.home { text-align: right; }
+    .match-team.away { text-align: left; }
+
+    .match-score {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      font-size: 1.1rem;
+      min-width: 80px;
+      justify-content: center;
+    }
+
+    .score-win { color: var(--win); }
+    .score-loss { color: var(--loss); }
+
+    .match-day {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+    }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .filter-select:focus { border-color: var(--accent); outline: none; }
+
+    .filter-input {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+
+    .filter-input::placeholder { color: var(--text-muted); }
+    .filter-input:focus { border-color: var(--accent); outline: none; }
+
+    /* Leaders section */
+    .leader-item {
+      display: flex;
+      align-items: center;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid rgba(42, 58, 74, 0.3);
+      gap: 1rem;
+    }
+
+    .leader-item:last-child { border-bottom: none; }
+
+    .leader-rank {
+      font-size: 1.2rem;
+      font-weight: 700;
+      width: 30px;
+      text-align: center;
+    }
+
+    .leader-rank.r1 { color: var(--gold); }
+    .leader-rank.r2 { color: var(--silver); }
+    .leader-rank.r3 { color: var(--bronze); }
+
+    .leader-info { flex: 1; }
+    .leader-name { font-weight: 600; font-size: 0.9rem; }
+    .leader-team { color: var(--text-muted); font-size: 0.75rem; }
+
+    .leader-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .leader-bar {
+      width: 100px;
+      height: 6px;
+      background: var(--bg-hover);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .leader-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+    }
+
+    /* Comparison section */
+    .compare-select-row {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    .compare-vs {
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    /* Sections visibility */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .grid-3 { grid-template-columns: 1fr; }
+      .stat-cards { grid-template-columns: repeat(2, 1fr); }
+      .content { padding: 1rem; }
+      .header { padding: 0.75rem 1rem; }
+      .nav-tabs { padding: 0 0.5rem; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Animations */
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>FEBAMBA Stats Dashboard</h1>
+      <div class="subtitle">Federacion de Basquetbol del Area Metropolitana de Buenos Aires</div>
+    </div>
+    <div class="header-right">
+      <span class="data-badge" id="dataSource">Datos de muestra</span>
+      <label class="data-badge" style="cursor:pointer;">
+        Cargar JSON
+        <input type="file" id="fileInput" accept=".json" style="display:none;">
+      </label>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <div class="nav-tab active" data-section="overview">Resumen</div>
+    <div class="nav-tab" data-section="standings">Posiciones</div>
+    <div class="nav-tab" data-section="players">Jugadores</div>
+    <div class="nav-tab" data-section="leaders">Lideres</div>
+    <div class="nav-tab" data-section="matches">Partidos</div>
+    <div class="nav-tab" data-section="compare">Comparar</div>
+  </div>
+
+  <div class="content">
+    <!-- ==================== OVERVIEW ==================== -->
+    <div class="section active" id="sec-overview">
+      <div class="stat-cards fade-in">
+        <div class="stat-card">
+          <div class="label">Equipos</div>
+          <div class="value" id="statTeams">-</div>
+          <div class="sub" id="statCompetition">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Partidos Jugados</div>
+          <div class="value" id="statMatches">-</div>
+          <div class="sub" id="statMatchdays">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Promedio Puntos/Partido</div>
+          <div class="value" id="statAvgPts">-</div>
+          <div class="sub">ambos equipos</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Maximo Anotador</div>
+          <div class="value" id="statTopScorer">-</div>
+          <div class="sub" id="statTopScorerTeam">-</div>
+        </div>
+      </div>
+
+      <div class="grid-2 fade-in">
+        <div class="card">
+          <div class="card-header"><h3>Tabla de Posiciones</h3></div>
+          <div class="card-body" style="padding: 0;">
+            <div id="miniStandings"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Ultimos Resultados</h3></div>
+          <div class="card-body" style="padding: 0;">
+            <div id="recentMatches"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2 fade-in" style="margin-top: 1.5rem;">
+        <div class="card">
+          <div class="card-header"><h3>Puntos por Equipo (PF vs PC)</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartTeamPts"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Top 10 Anotadores</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartTopScorers"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== STANDINGS ==================== -->
+    <div class="section" id="sec-standings">
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3 id="standingsTitle">Tabla de Posiciones</h3>
+        </div>
+        <div class="card-body" style="padding: 0; overflow-x: auto;">
+          <table class="standings-table" id="standingsTable">
+            <thead><tr>
+              <th class="num">Pos</th>
+              <th>Equipo</th>
+              <th class="num">PJ</th>
+              <th class="num">PG</th>
+              <th class="num">PP</th>
+              <th class="num">PF</th>
+              <th class="num">PC</th>
+              <th class="num">Dif</th>
+              <th class="num">Pts</th>
+              <th class="num">Racha</th>
+            </tr></thead>
+            <tbody id="standingsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2 fade-in" style="margin-top: 1.5rem;">
+        <div class="card">
+          <div class="card-header"><h3>Diferencia de Puntos</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartDiff"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>% Victorias</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartWinPct"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PLAYERS ==================== -->
+    <div class="section" id="sec-players">
+      <div class="filters fade-in">
+        <input type="text" class="filter-input" id="playerSearch" placeholder="Buscar jugador...">
+        <select class="filter-select" id="teamFilter">
+          <option value="">Todos los equipos</option>
+        </select>
+        <select class="filter-select" id="posFilter">
+          <option value="">Todas las posiciones</option>
+          <option value="PG">PG - Base</option>
+          <option value="SG">SG - Escolta</option>
+          <option value="SF">SF - Alero</option>
+          <option value="PF">PF - Ala-Pivot</option>
+          <option value="C">C - Pivot</option>
+        </select>
+      </div>
+
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3>Estadisticas de Jugadores</h3>
+          <span style="color: var(--text-muted); font-size: 0.75rem;" id="playerCount"></span>
+        </div>
+        <div class="card-body" style="padding: 0; overflow-x: auto;">
+          <table class="player-table" id="playerTable">
+            <thead><tr>
+              <th class="left" data-sort="name">Jugador</th>
+              <th data-sort="team">Equipo</th>
+              <th data-sort="position">Pos</th>
+              <th data-sort="gp">PJ</th>
+              <th data-sort="min">Min</th>
+              <th data-sort="pts">Pts</th>
+              <th data-sort="reb">Reb</th>
+              <th data-sort="ast">Ast</th>
+              <th data-sort="stl">Rob</th>
+              <th data-sort="blk">Tap</th>
+              <th data-sort="to">Per</th>
+              <th data-sort="fg_pct">TC%</th>
+              <th data-sort="tp_pct">3P%</th>
+              <th data-sort="ft_pct">TL%</th>
+            </tr></thead>
+            <tbody id="playerBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== LEADERS ==================== -->
+    <div class="section" id="sec-leaders">
+      <div class="grid-3 fade-in">
+        <div class="card">
+          <div class="card-header"><h3>Puntos</h3></div>
+          <div class="card-body" id="leaderPts"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Rebotes</h3></div>
+          <div class="card-body" id="leaderReb"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Asistencias</h3></div>
+          <div class="card-body" id="leaderAst"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Robos</h3></div>
+          <div class="card-body" id="leaderStl"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Tapas</h3></div>
+          <div class="card-body" id="leaderBlk"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>% Triples</h3></div>
+          <div class="card-body" id="leaderTp"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MATCHES ==================== -->
+    <div class="section" id="sec-matches">
+      <div class="filters fade-in">
+        <select class="filter-select" id="matchTeamFilter">
+          <option value="">Todos los equipos</option>
+        </select>
+        <select class="filter-select" id="matchdayFilter">
+          <option value="">Todas las fechas</option>
+        </select>
+      </div>
+
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3>Resultados</h3>
+          <span style="color: var(--text-muted); font-size: 0.75rem;" id="matchCount"></span>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div id="matchList"></div>
+        </div>
+      </div>
+
+      <div class="card fade-in" style="margin-top: 1.5rem;">
+        <div class="card-header"><h3>Puntos por Fecha</h3></div>
+        <div class="card-body">
+          <div class="chart-container chart-container-lg"><canvas id="chartMatchScores"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== COMPARE ==================== -->
+    <div class="section" id="sec-compare">
+      <div class="card fade-in">
+        <div class="card-header"><h3>Comparar Jugadores</h3></div>
+        <div class="card-body">
+          <div class="compare-select-row">
+            <select class="filter-select" id="comparePlayer1" style="flex:1;"></select>
+            <span class="compare-vs">VS</span>
+            <select class="filter-select" id="comparePlayer2" style="flex:1;"></select>
+          </div>
+          <div class="grid-2">
+            <div class="chart-container chart-container-lg">
+              <canvas id="chartRadar"></canvas>
+            </div>
+            <div id="compareStats" style="padding: 1rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================
+    // DATA
+    // ========================================
+    let DATA = null;
+    let charts = {};
+    let currentSort = { key: 'pts', dir: -1 };
+
+    // Load sample data inline (will be replaced when JSON is loaded)
+    async function loadData() {
+      try {
+        const resp = await fetch('./data/sample_data.json');
+        DATA = await resp.json();
+      } catch {
+        // Fallback: use inline minimal data if fetch fails
+        console.warn('Could not load sample_data.json, using inline fallback');
+        DATA = getInlineData();
+      }
+      initDashboard();
+    }
+
+    function getInlineData() {
+      return {
+        competition: { name: "FEBAMBA 2025", category: "Primera Division", season: "2025" },
+        standings: [],
+        players: [],
+        matches: [],
+        teamColors: {}
+      };
+    }
+
+    // File upload handler
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const loaded = JSON.parse(ev.target.result);
+          // Support both scraped_data.json format and sample_data.json format
+          if (loaded.standings || loaded.players) {
+            DATA = loaded;
+          } else if (loaded.competitions) {
+            // Convert scraped format
+            DATA = convertScrapedData(loaded);
+          }
+          document.getElementById('dataSource').textContent = 'Datos cargados: ' + file.name;
+          document.getElementById('dataSource').style.borderColor = 'var(--win)';
+          document.getElementById('dataSource').style.color = 'var(--win)';
+          initDashboard();
+        } catch (err) {
+          alert('Error parsing JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    function convertScrapedData(scraped) {
+      // Convert scraped_data.json from scraper.js into dashboard format
+      // This is a placeholder - actual conversion depends on scraped HTML structure
+      return {
+        competition: { name: "Datos Scrapeados", category: "", season: "" },
+        standings: [],
+        players: [],
+        matches: [],
+        teamColors: {}
+      };
+    }
+
+    // ========================================
+    // INIT
+    // ========================================
+    function initDashboard() {
+      if (!DATA) return;
+      renderOverview();
+      renderStandings();
+      renderPlayers();
+      renderLeaders();
+      renderMatches();
+      renderCompare();
+    }
+
+    // ========================================
+    // NAVIGATION
+    // ========================================
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        const sec = document.getElementById('sec-' + tab.dataset.section);
+        if (sec) sec.classList.add('active');
+      });
+    });
+
+    // ========================================
+    // OVERVIEW
+    // ========================================
+    function renderOverview() {
+      const s = DATA.standings || [];
+      const p = DATA.players || [];
+      const m = DATA.matches || [];
+
+      document.getElementById('statTeams').textContent = s.length;
+      document.getElementById('statCompetition').textContent = DATA.competition?.name || '';
+      document.getElementById('statMatches').textContent = m.length;
+
+      const matchdays = [...new Set(m.map(x => x.matchday))];
+      document.getElementById('statMatchdays').textContent = matchdays.length + ' fechas';
+
+      const totalPts = m.reduce((sum, x) => sum + (x.homeScore || 0) + (x.awayScore || 0), 0);
+      document.getElementById('statAvgPts').textContent = m.length ? (totalPts / m.length).toFixed(1) : '-';
+
+      const topScorer = p.sort((a, b) => b.pts - a.pts)[0];
+      if (topScorer) {
+        document.getElementById('statTopScorer').textContent = topScorer.pts.toFixed(1) + ' ppg';
+        document.getElementById('statTopScorerTeam').textContent = topScorer.name;
+      }
+
+      // Mini standings
+      let standingsHtml = '<table class="standings-table"><thead><tr><th class="num">Pos</th><th>Equipo</th><th class="num">PJ</th><th class="num">PG</th><th class="num">PP</th><th class="num">Pts</th></tr></thead><tbody>';
+      s.slice(0, 8).forEach(t => {
+        const cls = t.pos <= 8 ? 'playoff' : '';
+        standingsHtml += `<tr class="${cls}">
+          <td class="num"><span class="pos-badge pos-${t.pos <= 3 ? t.pos : ''}">${t.pos}</span></td>
+          <td class="team-name">${shortTeamName(t.team)}</td>
+          <td class="num">${t.pj}</td>
+          <td class="num">${t.pg}</td>
+          <td class="num">${t.pp}</td>
+          <td class="num"><strong>${t.pts}</strong></td>
+        </tr>`;
+      });
+      standingsHtml += '</tbody></table>';
+      document.getElementById('miniStandings').innerHTML = standingsHtml;
+
+      // Recent matches
+      let matchesHtml = '';
+      m.slice(0, 6).forEach(match => {
+        const homeWin = match.homeScore > match.awayScore;
+        matchesHtml += `<div class="match-card">
+          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
+          <div class="match-teams">
+            <div class="match-team home">${shortTeamName(match.home)}</div>
+            <div class="match-score">
+              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
+              <span style="color:var(--text-muted)">-</span>
+              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
+            </div>
+            <div class="match-team away">${shortTeamName(match.away)}</div>
+          </div>
+        </div>`;
+      });
+      document.getElementById('recentMatches').innerHTML = matchesHtml;
+
+      // Charts
+      renderTeamPtsChart();
+      renderTopScorersChart();
+    }
+
+    function renderTeamPtsChart() {
+      const s = DATA.standings || [];
+      if (!s.length) return;
+
+      destroyChart('chartTeamPts');
+      charts.chartTeamPts = new Chart(document.getElementById('chartTeamPts'), {
+        type: 'bar',
+        data: {
+          labels: s.map(t => shortTeamName(t.team)),
+          datasets: [
+            {
+              label: 'Puntos a Favor',
+              data: s.map(t => t.pf),
+              backgroundColor: 'rgba(78, 205, 196, 0.7)',
+              borderColor: 'rgba(78, 205, 196, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Puntos en Contra',
+              data: s.map(t => t.pc),
+              backgroundColor: 'rgba(255, 107, 107, 0.7)',
+              borderColor: 'rgba(255, 107, 107, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: chartOptions('Puntos')
+      });
+    }
+
+    function renderTopScorersChart() {
+      const p = [...(DATA.players || [])].sort((a, b) => b.pts - a.pts).slice(0, 10);
+      if (!p.length) return;
+
+      destroyChart('chartTopScorers');
+      charts.chartTopScorers = new Chart(document.getElementById('chartTopScorers'), {
+        type: 'bar',
+        data: {
+          labels: p.map(x => x.name.split(' ').pop()),
+          datasets: [{
+            label: 'PPG',
+            data: p.map(x => x.pts),
+            backgroundColor: p.map((_, i) => i === 0 ? 'rgba(255, 107, 53, 0.8)' : 'rgba(255, 107, 53, 0.4)'),
+            borderColor: 'rgba(255, 107, 53, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: { ...chartOptions('PPG'), indexAxis: 'y' }
+      });
+    }
+
+    // ========================================
+    // STANDINGS
+    // ========================================
+    function renderStandings() {
+      const s = DATA.standings || [];
+      document.getElementById('standingsTitle').textContent =
+        (DATA.competition?.name || 'Tabla de Posiciones') + ' - Posiciones';
+
+      let html = '';
+      s.forEach(t => {
+        const cls = t.pos <= 8 ? 'playoff' : (t.pos >= s.length - 1 ? 'relegation' : '');
+        const streakCls = t.streak?.startsWith('W') ? 'streak-w' : 'streak-l';
+        const diffCls = t.dif > 0 ? 'diff-pos' : (t.dif < 0 ? 'diff-neg' : '');
+        html += `<tr class="${cls}">
+          <td class="num"><span class="pos-badge pos-${t.pos <= 3 ? t.pos : ''}">${t.pos}</span></td>
+          <td class="team-name">${t.team}</td>
+          <td class="num">${t.pj}</td>
+          <td class="num">${t.pg}</td>
+          <td class="num">${t.pp}</td>
+          <td class="num">${t.pf}</td>
+          <td class="num">${t.pc}</td>
+          <td class="num ${diffCls}">${t.dif > 0 ? '+' : ''}${t.dif}</td>
+          <td class="num"><strong>${t.pts}</strong></td>
+          <td class="num"><span class="${streakCls}">${t.streak || ''}</span></td>
+        </tr>`;
+      });
+      document.getElementById('standingsBody').innerHTML = html;
+
+      // Charts
+      renderDiffChart();
+      renderWinPctChart();
+    }
+
+    function renderDiffChart() {
+      const s = DATA.standings || [];
+      if (!s.length) return;
+
+      destroyChart('chartDiff');
+      charts.chartDiff = new Chart(document.getElementById('chartDiff'), {
+        type: 'bar',
+        data: {
+          labels: s.map(t => shortTeamName(t.team)),
+          datasets: [{
+            label: 'Diferencia',
+            data: s.map(t => t.dif),
+            backgroundColor: s.map(t => t.dif >= 0 ? 'rgba(78, 205, 196, 0.7)' : 'rgba(255, 107, 107, 0.7)'),
+            borderColor: s.map(t => t.dif >= 0 ? 'rgba(78, 205, 196, 1)' : 'rgba(255, 107, 107, 1)'),
+            borderWidth: 1
+          }]
+        },
+        options: chartOptions('Diferencia de puntos')
+      });
+    }
+
+    function renderWinPctChart() {
+      const s = DATA.standings || [];
+      if (!s.length) return;
+
+      destroyChart('chartWinPct');
+      charts.chartWinPct = new Chart(document.getElementById('chartWinPct'), {
+        type: 'doughnut',
+        data: {
+          labels: s.slice(0, 6).map(t => shortTeamName(t.team)),
+          datasets: [{
+            data: s.slice(0, 6).map(t => ((t.pg / t.pj) * 100).toFixed(1)),
+            backgroundColor: [
+              'rgba(255, 107, 53, 0.8)', 'rgba(78, 205, 196, 0.8)',
+              'rgba(255, 230, 109, 0.8)', 'rgba(107, 137, 255, 0.8)',
+              'rgba(255, 107, 170, 0.8)', 'rgba(170, 107, 255, 0.8)'
+            ],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { color: '#8899aa', font: { size: 11 } } },
+            tooltip: {
+              callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}%` }
+            }
+          }
+        }
+      });
+    }
+
+    // ========================================
+    // PLAYERS
+    // ========================================
+    function renderPlayers() {
+      const p = DATA.players || [];
+      if (!p.length) return;
+
+      // Populate team filter
+      const teams = [...new Set(p.map(x => x.team))].sort();
+      const teamSel = document.getElementById('teamFilter');
+      const matchTeamSel = document.getElementById('matchTeamFilter');
+      teamSel.innerHTML = '<option value="">Todos los equipos</option>';
+      matchTeamSel.innerHTML = '<option value="">Todos los equipos</option>';
+      teams.forEach(t => {
+        teamSel.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
+        matchTeamSel.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
+      });
+
+      renderPlayerTable();
+
+      // Filters
+      document.getElementById('playerSearch').addEventListener('input', renderPlayerTable);
+      document.getElementById('teamFilter').addEventListener('change', renderPlayerTable);
+      document.getElementById('posFilter').addEventListener('change', renderPlayerTable);
+
+      // Sort headers
+      document.querySelectorAll('#playerTable th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (currentSort.key === key) {
+            currentSort.dir *= -1;
+          } else {
+            currentSort = { key, dir: -1 };
+          }
+          document.querySelectorAll('#playerTable th').forEach(h => h.classList.remove('active'));
+          th.classList.add('active');
+          renderPlayerTable();
+        });
+      });
+    }
+
+    function renderPlayerTable() {
+      let p = [...(DATA.players || [])];
+      const search = document.getElementById('playerSearch').value.toLowerCase();
+      const team = document.getElementById('teamFilter').value;
+      const pos = document.getElementById('posFilter').value;
+
+      if (search) p = p.filter(x => x.name.toLowerCase().includes(search));
+      if (team) p = p.filter(x => x.team === team);
+      if (pos) p = p.filter(x => x.position === pos);
+
+      // Sort
+      p.sort((a, b) => {
+        const key = currentSort.key;
+        if (key === 'name' || key === 'team' || key === 'position') {
+          return currentSort.dir * (a[key] || '').localeCompare(b[key] || '');
+        }
+        return currentSort.dir * ((b[key] || 0) - (a[key] || 0));
+      });
+
+      let html = '';
+      p.forEach(pl => {
+        html += `<tr>
+          <td class="left"><span class="player-name">${pl.name}</span></td>
+          <td><span class="player-team">${shortTeamName(pl.team)}</span></td>
+          <td>${pl.position}</td>
+          <td>${pl.gp}</td>
+          <td>${pl.min?.toFixed(1) || '-'}</td>
+          <td><strong>${pl.pts?.toFixed(1) || '-'}</strong></td>
+          <td>${pl.reb?.toFixed(1) || '-'}</td>
+          <td>${pl.ast?.toFixed(1) || '-'}</td>
+          <td>${pl.stl?.toFixed(1) || '-'}</td>
+          <td>${pl.blk?.toFixed(1) || '-'}</td>
+          <td>${pl.to?.toFixed(1) || '-'}</td>
+          <td>${pl.fg_pct?.toFixed(1) || '-'}%</td>
+          <td>${pl.tp_pct?.toFixed(1) || '-'}%</td>
+          <td>${pl.ft_pct?.toFixed(1) || '-'}%</td>
+        </tr>`;
+      });
+
+      document.getElementById('playerBody').innerHTML = html;
+      document.getElementById('playerCount').textContent = p.length + ' jugadores';
+    }
+
+    // ========================================
+    // LEADERS
+    // ========================================
+    function renderLeaders() {
+      const p = DATA.players || [];
+      if (!p.length) return;
+
+      renderLeaderList('leaderPts', p, 'pts', 'ppg');
+      renderLeaderList('leaderReb', p, 'reb', 'rpg');
+      renderLeaderList('leaderAst', p, 'ast', 'apg');
+      renderLeaderList('leaderStl', p, 'stl', 'spg');
+      renderLeaderList('leaderBlk', p, 'blk', 'bpg');
+      renderLeaderList('leaderTp', p, 'tp_pct', '%', 5);
+    }
+
+    function renderLeaderList(containerId, players, stat, unit, minGp) {
+      let sorted = [...players];
+      if (minGp) sorted = sorted.filter(p => p.gp >= minGp);
+      sorted.sort((a, b) => (b[stat] || 0) - (a[stat] || 0));
+      const top = sorted.slice(0, 5);
+      const max = top[0]?.[stat] || 1;
+
+      let html = '';
+      top.forEach((p, i) => {
+        const rankCls = i < 3 ? `r${i + 1}` : '';
+        const pct = ((p[stat] / max) * 100).toFixed(0);
+        html += `<div class="leader-item">
+          <div class="leader-rank ${rankCls}">${i + 1}</div>
+          <div class="leader-info">
+            <div class="leader-name">${p.name}</div>
+            <div class="leader-team">${shortTeamName(p.team)}</div>
+            <div class="leader-bar"><div class="leader-bar-fill" style="width:${pct}%"></div></div>
+          </div>
+          <div class="leader-value">${p[stat]?.toFixed(1)} <span style="font-size:0.7rem;color:var(--text-muted)">${unit}</span></div>
+        </div>`;
+      });
+
+      document.getElementById(containerId).innerHTML = html;
+    }
+
+    // ========================================
+    // MATCHES
+    // ========================================
+    function renderMatches() {
+      const m = DATA.matches || [];
+
+      // Populate matchday filter
+      const matchdays = [...new Set(m.map(x => x.matchday))].sort((a, b) => b - a);
+      const sel = document.getElementById('matchdayFilter');
+      sel.innerHTML = '<option value="">Todas las fechas</option>';
+      matchdays.forEach(md => {
+        sel.innerHTML += `<option value="${md}">Fecha ${md}</option>`;
+      });
+
+      renderMatchList();
+
+      document.getElementById('matchTeamFilter').addEventListener('change', renderMatchList);
+      document.getElementById('matchdayFilter').addEventListener('change', renderMatchList);
+
+      renderMatchScoresChart();
+    }
+
+    function renderMatchList() {
+      let m = [...(DATA.matches || [])];
+      const team = document.getElementById('matchTeamFilter').value;
+      const md = document.getElementById('matchdayFilter').value;
+
+      if (team) m = m.filter(x => x.home === team || x.away === team);
+      if (md) m = m.filter(x => x.matchday == md);
+
+      m.sort((a, b) => b.matchday - a.matchday || b.date?.localeCompare(a.date));
+
+      let html = '';
+      m.forEach(match => {
+        const homeWin = match.homeScore > match.awayScore;
+        html += `<div class="match-card">
+          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
+          <div class="match-teams">
+            <div class="match-team home" style="font-weight:${homeWin ? '700' : '400'}">${shortTeamName(match.home)}</div>
+            <div class="match-score">
+              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
+              <span style="color:var(--text-muted)">-</span>
+              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
+            </div>
+            <div class="match-team away" style="font-weight:${!homeWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
+          </div>
+        </div>`;
+      });
+
+      document.getElementById('matchList').innerHTML = html || '<div style="padding:2rem;text-align:center;color:var(--text-muted);">No hay partidos</div>';
+      document.getElementById('matchCount').textContent = m.length + ' partidos';
+    }
+
+    function renderMatchScoresChart() {
+      const m = [...(DATA.matches || [])].sort((a, b) => a.matchday - b.matchday);
+      if (!m.length) return;
+
+      const byMatchday = {};
+      m.forEach(match => {
+        if (!byMatchday[match.matchday]) byMatchday[match.matchday] = [];
+        byMatchday[match.matchday].push(match.homeScore + match.awayScore);
+      });
+
+      const labels = Object.keys(byMatchday).sort((a, b) => a - b);
+      const avgScores = labels.map(md => {
+        const scores = byMatchday[md];
+        return (scores.reduce((s, x) => s + x, 0) / scores.length).toFixed(1);
+      });
+
+      destroyChart('chartMatchScores');
+      charts.chartMatchScores = new Chart(document.getElementById('chartMatchScores'), {
+        type: 'line',
+        data: {
+          labels: labels.map(l => 'F' + l),
+          datasets: [{
+            label: 'Promedio puntos combinados',
+            data: avgScores,
+            borderColor: 'rgba(255, 107, 53, 1)',
+            backgroundColor: 'rgba(255, 107, 53, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: 'rgba(255, 107, 53, 1)'
+          }]
+        },
+        options: chartOptions('Puntos combinados por partido')
+      });
+    }
+
+    // ========================================
+    // COMPARE
+    // ========================================
+    function renderCompare() {
+      const p = DATA.players || [];
+      if (!p.length) return;
+
+      const sel1 = document.getElementById('comparePlayer1');
+      const sel2 = document.getElementById('comparePlayer2');
+      sel1.innerHTML = '';
+      sel2.innerHTML = '';
+
+      p.forEach(pl => {
+        sel1.innerHTML += `<option value="${pl.id}">${pl.name} (${shortTeamName(pl.team)})</option>`;
+        sel2.innerHTML += `<option value="${pl.id}">${pl.name} (${shortTeamName(pl.team)})</option>`;
+      });
+
+      if (p.length >= 2) sel2.value = p[1].id;
+
+      sel1.addEventListener('change', updateCompare);
+      sel2.addEventListener('change', updateCompare);
+
+      updateCompare();
+    }
+
+    function updateCompare() {
+      const p = DATA.players || [];
+      const id1 = document.getElementById('comparePlayer1').value;
+      const id2 = document.getElementById('comparePlayer2').value;
+      const p1 = p.find(x => x.id == id1);
+      const p2 = p.find(x => x.id == id2);
+      if (!p1 || !p2) return;
+
+      // Radar chart
+      const stats = ['pts', 'reb', 'ast', 'stl', 'blk'];
+      const labels = ['Puntos', 'Rebotes', 'Asistencias', 'Robos', 'Tapas'];
+      const maxVals = stats.map(s => Math.max(...p.map(x => x[s] || 0)));
+
+      const normalize = (val, max) => max ? ((val / max) * 100).toFixed(1) : 0;
+
+      destroyChart('chartRadar');
+      charts.chartRadar = new Chart(document.getElementById('chartRadar'), {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: p1.name,
+              data: stats.map((s, i) => normalize(p1[s], maxVals[i])),
+              borderColor: 'rgba(255, 107, 53, 1)',
+              backgroundColor: 'rgba(255, 107, 53, 0.2)',
+              pointBackgroundColor: 'rgba(255, 107, 53, 1)',
+              borderWidth: 2
+            },
+            {
+              label: p2.name,
+              data: stats.map((s, i) => normalize(p2[s], maxVals[i])),
+              borderColor: 'rgba(78, 205, 196, 1)',
+              backgroundColor: 'rgba(78, 205, 196, 0.2)',
+              pointBackgroundColor: 'rgba(78, 205, 196, 1)',
+              borderWidth: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              beginAtZero: true,
+              max: 100,
+              ticks: { display: false },
+              grid: { color: 'rgba(42, 58, 74, 0.5)' },
+              pointLabels: { color: '#8899aa', font: { size: 12 } }
+            }
+          },
+          plugins: {
+            legend: { labels: { color: '#8899aa' } }
+          }
+        }
+      });
+
+      // Side by side stats
+      const allStats = [
+        { key: 'pts', label: 'Puntos' },
+        { key: 'reb', label: 'Rebotes' },
+        { key: 'ast', label: 'Asistencias' },
+        { key: 'stl', label: 'Robos' },
+        { key: 'blk', label: 'Tapas' },
+        { key: 'to', label: 'Perdidas' },
+        { key: 'min', label: 'Minutos' },
+        { key: 'fg_pct', label: 'TC%' },
+        { key: 'tp_pct', label: '3P%' },
+        { key: 'ft_pct', label: 'TL%' },
+        { key: 'gp', label: 'PJ' }
+      ];
+
+      let html = '<table class="player-table" style="font-size:0.85rem;"><thead><tr>';
+      html += '<th class="left">Stat</th>';
+      html += `<th style="color:var(--accent)">${p1.name.split(' ').pop()}</th>`;
+      html += `<th style="color:var(--accent2)">${p2.name.split(' ').pop()}</th>`;
+      html += '</tr></thead><tbody>';
+
+      allStats.forEach(({ key, label }) => {
+        const v1 = p1[key] || 0;
+        const v2 = p2[key] || 0;
+        const better = key === 'to' ? (v1 < v2 ? 1 : v1 > v2 ? 2 : 0) : (v1 > v2 ? 1 : v1 < v2 ? 2 : 0);
+        html += `<tr>
+          <td class="left">${label}</td>
+          <td style="font-weight:${better === 1 ? '700' : '400'}; color:${better === 1 ? 'var(--accent)' : 'inherit'}">${typeof v1 === 'number' ? v1.toFixed(1) : v1}</td>
+          <td style="font-weight:${better === 2 ? '700' : '400'}; color:${better === 2 ? 'var(--accent2)' : 'inherit'}">${typeof v2 === 'number' ? v2.toFixed(1) : v2}</td>
+        </tr>`;
+      });
+
+      html += '</tbody></table>';
+      document.getElementById('compareStats').innerHTML = html;
+    }
+
+    // ========================================
+    // HELPERS
+    // ========================================
+    function shortTeamName(name) {
+      if (!name) return '';
+      return name
+        .replace('Club ', '').replace('de Almagro', '')
+        .replace('Carril Oeste', 'C.O.')
+        .replace('y Esgrima (LP)', '')
+        .replace('de Buenos Aires', 'BA')
+        .replace('Deportivo ', '')
+        .replace('Defensores de ', '')
+        .trim();
+    }
+
+    function destroyChart(id) {
+      if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    }
+
+    function chartOptions(yLabel) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: { color: '#5a6a7a', font: { size: 10 } },
+            grid: { color: 'rgba(42, 58, 74, 0.3)' }
+          },
+          y: {
+            ticks: { color: '#5a6a7a' },
+            grid: { color: 'rgba(42, 58, 74, 0.3)' },
+            title: { display: !!yLabel, text: yLabel, color: '#5a6a7a' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#8899aa', font: { size: 11 } } }
+        }
+      };
+    }
+
+    // ========================================
+    // BOOT
+    // ========================================
+    loadData();
+  </script>
+</body>
+</html>
