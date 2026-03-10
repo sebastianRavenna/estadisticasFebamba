@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "scrape": "node scraper.js",
+    "scrape:api": "node scraper_api.js",
     "dashboard": "npx http-server -p 8080 -o dashboard.html",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
