@@ -78,12 +78,15 @@ async function registerDevice() {
   SESSION.uid = crypto.randomUUID();
 
   // Paso 1: Llamar a dispositivo.ashx con accion=acceso
+  // Parámetros completos que envía la app (descubiertos del APK):
   const url = new URL(`${BASE_URL_STATIC}/dispositivo.ashx`);
   url.searchParams.set('accion', 'acceso');
   url.searchParams.set('uid', SESSION.uid);
   url.searchParams.set('tipo_dispositivo', 'android');
   url.searchParams.set('tipoDispositivo', 'android');
   url.searchParams.set('id_dispositivo', '');
+  url.searchParams.set('token_push', '');
+  url.searchParams.set('idioma', 'es');
 
   console.log(`  GET ${url.pathname}?${url.searchParams.toString()}`);
 
@@ -125,6 +128,8 @@ async function registerDevice() {
   url2.searchParams.set('tipo_dispositivo', 'android');
   url2.searchParams.set('tipoDispositivo', 'android');
   url2.searchParams.set('id_dispositivo', '');
+  url2.searchParams.set('token_push', '');
+  url2.searchParams.set('idioma', 'es');
 
   try {
     const response = await fetch(url2.toString(), {
