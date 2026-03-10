@@ -8,3 +8,5 @@ apk_strings.json
 data/scraped_data.json
 data/scrape_summary.json
 page_*.html
+apk_analysis/
+cabb.apk
