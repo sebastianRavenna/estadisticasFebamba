@@ -452,19 +452,39 @@ async function buscar(tipo, texto) {
 }
 
 /**
+ * Decodifica un Id hex-encoded (UTF-16LE) al string original.
+ * Ejemplo: "66006D007A00..." → "fmzE1QZBjnAd965Z677JkA=="
+ * La API de Indalweb usa estos IDs codificados como id_categoria_competicion.
+ */
+function decodeHexId(hexId) {
+  let decoded = '';
+  for (let i = 0; i < hexId.length; i += 4) {
+    const charCode = parseInt(hexId.substring(i, i + 2), 16);
+    if (charCode > 0) decoded += String.fromCharCode(charCode);
+  }
+  return decoded;
+}
+
+/**
  * Procesa una competición: obtiene fases/grupos, clasificación, partidos y estadísticas.
  */
 async function scrapeCompeticion(comp) {
-  const compId = comp.IdCompeticionCategoria || comp.IdCategoriaCompeticion || comp.Id;
+  // La API requiere el Id codificado (string hex → decoded), NO el numérico
+  const compIdEncoded = comp.Id; // hex-encoded UTF-16LE string
+  const compIdDecoded = decodeHexId(compIdEncoded); // e.g. "fmzE1QZBjnAd965Z677JkA=="
+  const compIdNumeric = comp.IdCompeticionCategoria; // numeric, for filenames only
   const compName = `${comp.NombreCompeticion} - ${comp.NombreCategoria}`;
-  const compIdSafe = String(compId).replace(/[^a-zA-Z0-9]/g, '_');
+  const compIdSafe = String(compIdNumeric || compIdDecoded).replace(/[^a-zA-Z0-9]/g, '_');
+
+  console.log(`  Id encoded: ${compIdEncoded?.substring(0, 40)}...`);
+  console.log(`  Id decoded: ${compIdDecoded}`);
 
   console.log(`\n========================================`);
-  console.log(`  Competición: ${compName} (id=${compId})`);
+  console.log(`  Competición: ${compName} (id=${compIdNumeric})`);
   console.log(`========================================`);
 
   // 1. Obtener fases y grupos
-  const fasesGrupos = await getFasesGrupos(compId);
+  const fasesGrupos = await getFasesGrupos(compIdDecoded);
   await sleep(DELAY_MS);
 
   if (!fasesGrupos) {
@@ -483,7 +503,7 @@ async function scrapeCompeticion(comp) {
     return fasesGrupos;
   }
 
-  const results = { competicion: compName, compId, fases: [] };
+  const results = { competicion: compName, compId: compIdNumeric, fases: [] };
 
   for (const fase of (Array.isArray(fases) ? fases : [fases])) {
     const faseId = fase.IdFase || fase.Id;
@@ -499,14 +519,14 @@ async function scrapeCompeticion(comp) {
       console.log(`    Grupo: ${grupoName} (id=${grupoId})`);
 
       // 2. Clasificación (standings)
-      const clasificacion = await getClasificacion(compId, faseId, grupoId);
+      const clasificacion = await getClasificacion(compIdDecoded, faseId, grupoId);
       if (clasificacion && clasificacion.resultado !== 'error') {
         saveData(`clasificacion_${compIdSafe}_${faseId}_${grupoId}.json`, clasificacion);
       }
       await sleep(DELAY_MS);
 
       // 3. Partidos
-      const partidos = await getPartidos(compId, faseId, grupoId);
+      const partidos = await getPartidos(compIdDecoded, faseId, grupoId);
       if (partidos && partidos.resultado !== 'error') {
         saveData(`partidos_${compIdSafe}_${faseId}_${grupoId}.json`, partidos);
       }
@@ -546,7 +566,7 @@ async function scrapeCompeticion(comp) {
         await sleep(DELAY_MS);
 
         // Obtener jugadores del equipo
-        const jugadores = await getJugadores(eqId, compId);
+        const jugadores = await getJugadores(eqId, compIdDecoded);
         if (jugadores && jugadores.resultado !== 'error') {
           saveData(`jugadores_${eqId}_${compIdSafe}.json`, jugadores);
         }
