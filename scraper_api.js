@@ -361,24 +361,25 @@ async function getFasesGrupos(idCategoriaCompeticion) {
   return data;
 }
 
-async function getClasificacion(idCategoriaCompeticion, idFase, idGrupo) {
-  console.log(`\n--- Obteniendo clasificación (comp=${idCategoriaCompeticion}, fase=${idFase}, grupo=${idGrupo}) ---`);
+async function getClasificacion(idGrupo, tipoFase, jornada, ventana) {
+  console.log(`\n--- Obteniendo clasificación (grupo=${idGrupo}, tipo_fase=${tipoFase}) ---`);
   const data = await apiCall('categoria.ashx', {
     accion: 'clasificacion',
-    id_categoria_competicion: idCategoriaCompeticion,
-    id_fase: idFase,
-    id_grupo: idGrupo,
+    id_grupo: idGrupo || '',
+    tipo_fase: tipoFase || '',
+    jornada: jornada || '',
+    ventana: ventana || '',
   });
   return data;
 }
 
-async function getJornadas(idCategoriaCompeticion, idFase, idGrupo) {
-  console.log(`\n--- Obteniendo jornadas (comp=${idCategoriaCompeticion}, fase=${idFase}, grupo=${idGrupo}) ---`);
+async function getJornadas(idFase, idGrupo, idRonda) {
+  console.log(`\n--- Obteniendo Jornadas (fase=${idFase}, grupo=${idGrupo}, ronda=${idRonda}) ---`);
   const data = await apiCall('categoria.ashx', {
-    accion: 'jornadas',
-    id_categoria_competicion: idCategoriaCompeticion,
-    id_fase: idFase,
-    id_grupo: idGrupo,
+    accion: 'Jornadas',
+    id_fase: idFase || '',
+    id_grupo: idGrupo || '',
+    id_ronda: idRonda || '',
   });
   return data;
 }
@@ -512,6 +513,8 @@ async function scrapeCompeticion(comp) {
   const listaFases = fasesGrupos.listaFasesGrupo || [];
   const faseActual = fasesGrupos.faseActual;
   const grupoActual = fasesGrupos.grupoActual;
+  const rondaActual = fasesGrupos.rondaActual || '';
+  const tipoFase = fasesGrupos.tipoFase || '';
 
   // Construir lista de combinaciones fase/grupo a scrapear
   const fasesGruposToScrape = [];
@@ -555,23 +558,25 @@ async function scrapeCompeticion(comp) {
       console.log(`\n  Fase: ${faseName} (id=${faseId})`);
       console.log(`    Grupo: ${grupoName} (id=${grupoId})`);
 
-      // 2. Clasificación (standings)
-      const clasificacion = await getClasificacion(compIdDecoded, faseId, grupoId);
-      if (clasificacion && clasificacion.resultado !== 'error') {
-        saveData(`clasificacion_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, clasificacion);
-        console.log(`    Clasificación OK: resultado=${clasificacion.resultado}`);
-      } else {
-        console.log(`    Clasificación: sin datos o error`, clasificacion ? JSON.stringify(clasificacion).substring(0, 200) : 'null');
-      }
-      await sleep(DELAY_MS);
-
-      // 3. Jornadas (match schedule - via categoria.ashx, NOT partidos.ashx)
-      const jornadas = await getJornadas(compIdDecoded, faseId, grupoId);
+      // 2. Jornadas first (APK calls Jornadas before clasificacion)
+      // Note: accion='Jornadas' (capital J!) per APK deobfuscation
+      const jornadas = await getJornadas(faseId, grupoId, rondaActual);
       if (jornadas && jornadas.resultado !== 'error') {
         saveData(`jornadas_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, jornadas);
         console.log(`    Jornadas OK: resultado=${jornadas.resultado}`);
       } else {
         console.log(`    Jornadas: sin datos o error`, jornadas ? JSON.stringify(jornadas).substring(0, 200) : 'null');
+      }
+      await sleep(DELAY_MS);
+
+      // 3. Clasificación (standings) - APK sends after Jornadas
+      // Uses id_grupo, tipo_fase, jornada, ventana (NOT id_categoria_competicion/id_fase)
+      const clasificacion = await getClasificacion(grupoId, tipoFase, '', '');
+      if (clasificacion && clasificacion.resultado !== 'error') {
+        saveData(`clasificacion_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, clasificacion);
+        console.log(`    Clasificación OK: resultado=${clasificacion.resultado}`);
+      } else {
+        console.log(`    Clasificación: sin datos o error`, clasificacion ? JSON.stringify(clasificacion).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
