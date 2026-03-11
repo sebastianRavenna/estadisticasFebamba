@@ -242,10 +242,19 @@ async function registerDevice() {
     BASE_URL_DYNAMIC = base + 'v2';
   }
 
-  // Caso 1: Sesión completa existente
+  // Caso 1: Sesión completa existente - refrescar key via acceso para asegurar validez
   if (hasSession && SESSION.id_dispositivo && SESSION.key) {
-    console.log('  Usando sesión previa (id_dispositivo + key presentes)');
-    return true;
+    console.log('  Sesión previa encontrada, refrescando key via acceso...');
+    if (!SESSION.uid) {
+      SESSION.uid = generateAndroidId();
+      console.log(`  Nuevo uid generado: ${SESSION.uid}`);
+    }
+    try {
+      if (await accessExistingDevice()) return true;
+    } catch (err) {
+      console.error(`  Error refrescando key: ${err.message}`);
+    }
+    console.log('  Refresco falló, intentando registro nuevo...');
   }
 
   // Generar uid si no existe (simula Cordova device.uuid = Android ID)
@@ -297,8 +306,12 @@ async function apiCall(endpoint, params = {}, baseUrl = null) {
   try {
     const data = await postAPI(url, params);
 
-    if (data && data.resultado === 'error' && data.error === 'Sesión caducada') {
-      console.log('  Sesión caducada, renovando key...');
+    // Detect expired/invalid session: server returns resultado=error with empty id_dispositivo/key
+    const sessionExpired = data && data.resultado === 'error' &&
+      (data.error === 'Sesión caducada' || (data.id_dispositivo === '' && data.key === ''));
+
+    if (sessionExpired) {
+      console.log('  Sesión inválida/caducada, renovando key...');
       SESSION.key = '';
       if (SESSION.id_dispositivo) {
         await accessExistingDevice();
@@ -624,7 +637,7 @@ async function scrapeCompeticion(comp) {
             await sleep(DELAY_MS);
           }
         } else {
-          console.log(`    Sin partidos finalizados aún (${extractPartidos(partidos).length} programados)`);
+          console.log(`    Sin partidos finalizados aún (${listaPartidos.length} programados)`);
         }
       }
 
