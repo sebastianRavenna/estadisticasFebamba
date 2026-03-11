@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node server.js",
     "scrape": "node scraper.js",
     "scrape:api": "node scraper_api.js",
     "dashboard": "npx http-server -p 8080 -o dashboard.html",
