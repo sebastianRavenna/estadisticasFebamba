@@ -48,7 +48,7 @@ let SESSION = {
   id_dispositivo: '',
   key: '',
   uid: '',
-  urlServidorDinamica: '',
+  ruta: '',
 };
 
 // ============================================================
@@ -123,7 +123,14 @@ async function postAPI(url, params) {
 
 /**
  * Procesa la respuesta del servidor (replica UltimaActualizacion del APK).
- * Extrae key, id_dispositivo y urlServidorDinamica de la respuesta.
+ * Extrae key, id_dispositivo y ruta de la respuesta.
+ *
+ * La respuesta real incluye:
+ *   - resultado: "correcto"
+ *   - id_dispositivo: string (server-assigned, base64-like)
+ *   - key: string (session token)
+ *   - ruta: "https://appaficioncabb.indalweb.net/" (base URL)
+ *   - publicidad, perfil, Segmentacion, etc.
  */
 function processAuthResponse(data) {
   if (data.resultado !== 'correcto') return false;
@@ -134,10 +141,13 @@ function processAuthResponse(data) {
   if (data.id_dispositivo) {
     SESSION.id_dispositivo = data.id_dispositivo;
   }
-  if (data.urlServidorDinamica) {
-    SESSION.urlServidorDinamica = data.urlServidorDinamica;
-    BASE_URL_DYNAMIC = data.urlServidorDinamica + (data.urlServidorDinamica.endsWith('/') ? 'v2/' : '/v2/');
-    console.log(`  URL dinámica actualizada: ${BASE_URL_DYNAMIC}`);
+  // El servidor devuelve "ruta" (no "urlServidorDinamica")
+  // La app construye urlServidorDinamica = ruta + 'v2/'
+  if (data.ruta) {
+    SESSION.ruta = data.ruta;
+    const base = data.ruta.endsWith('/') ? data.ruta : data.ruta + '/';
+    BASE_URL_DYNAMIC = base + 'v2';
+    console.log(`  URL dinámica: ${BASE_URL_DYNAMIC}`);
   }
   return true;
 }
@@ -227,8 +237,9 @@ async function registerDevice() {
 
   const hasSession = loadSession();
 
-  if (hasSession && SESSION.urlServidorDinamica) {
-    BASE_URL_DYNAMIC = SESSION.urlServidorDinamica + (SESSION.urlServidorDinamica.endsWith('/') ? 'v2/' : '/v2/');
+  if (hasSession && SESSION.ruta) {
+    const base = SESSION.ruta.endsWith('/') ? SESSION.ruta : SESSION.ruta + '/';
+    BASE_URL_DYNAMIC = base + 'v2';
   }
 
   // Caso 1: Sesión completa existente
@@ -440,6 +451,107 @@ async function buscar(tipo, texto) {
   return data;
 }
 
+/**
+ * Procesa una competición: obtiene fases/grupos, clasificación, partidos y estadísticas.
+ */
+async function scrapeCompeticion(comp) {
+  const compId = comp.IdCompeticionCategoria || comp.IdCategoriaCompeticion || comp.Id;
+  const compName = `${comp.NombreCompeticion} - ${comp.NombreCategoria}`;
+  const compIdSafe = String(compId).replace(/[^a-zA-Z0-9]/g, '_');
+
+  console.log(`\n========================================`);
+  console.log(`  Competición: ${compName} (id=${compId})`);
+  console.log(`========================================`);
+
+  // 1. Obtener fases y grupos
+  const fasesGrupos = await getFasesGrupos(compId);
+  await sleep(DELAY_MS);
+
+  if (!fasesGrupos) {
+    console.log('  No se pudieron obtener fases/grupos');
+    return null;
+  }
+
+  saveData(`fases_grupos_${compIdSafe}.json`, fasesGrupos);
+
+  // Extraer la lista de fases del response (puede venir en distintos formatos)
+  const datos = fasesGrupos.datos || fasesGrupos;
+  const fases = datos.ListaFases || datos.Fases || (datos.IdFase ? [datos] : []);
+
+  if (!fases.length) {
+    console.log('  No se encontraron fases. Estructura:', JSON.stringify(datos).substring(0, 300));
+    return fasesGrupos;
+  }
+
+  const results = { competicion: compName, compId, fases: [] };
+
+  for (const fase of (Array.isArray(fases) ? fases : [fases])) {
+    const faseId = fase.IdFase || fase.Id;
+    const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
+    const grupos = fase.ListaGrupos || fase.Grupos || (fase.IdGrupo ? [fase] : []);
+
+    console.log(`\n  Fase: ${faseName} (id=${faseId})`);
+
+    for (const grupo of (Array.isArray(grupos) ? grupos : [grupos])) {
+      const grupoId = grupo.IdGrupo || grupo.Id;
+      const grupoName = grupo.NombreGrupo || grupo.Nombre || `Grupo ${grupoId}`;
+
+      console.log(`    Grupo: ${grupoName} (id=${grupoId})`);
+
+      // 2. Clasificación (standings)
+      const clasificacion = await getClasificacion(compId, faseId, grupoId);
+      if (clasificacion && clasificacion.resultado !== 'error') {
+        saveData(`clasificacion_${compIdSafe}_${faseId}_${grupoId}.json`, clasificacion);
+      }
+      await sleep(DELAY_MS);
+
+      // 3. Partidos
+      const partidos = await getPartidos(compId, faseId, grupoId);
+      if (partidos && partidos.resultado !== 'error') {
+        saveData(`partidos_${compIdSafe}_${faseId}_${grupoId}.json`, partidos);
+      }
+      await sleep(DELAY_MS);
+
+      // 4. Estadísticas de partidos finalizados (limitar a 5)
+      if (partidos) {
+        const listaPartidos = extractPartidos(partidos);
+        const finalizados = listaPartidos
+          .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado')
+          .slice(0, 5);
+
+        console.log(`    Partidos finalizados: ${finalizados.length} de ${listaPartidos.length} total`);
+
+        for (const partido of finalizados) {
+          const partidoId = partido.IdPartido || partido.Id || partido.id;
+          if (!partidoId) continue;
+
+          const stats = await getEstadisticasPartido(partidoId);
+          if (stats && stats.resultado !== 'error') {
+            saveData(`stats_partido_${partidoId}.json`, stats);
+          }
+          await sleep(DELAY_MS);
+        }
+      }
+
+      results.fases.push({ faseId, faseName, grupoId, grupoName, clasificacion, partidos });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Extrae la lista de partidos de una respuesta, manejando distintos formatos.
+ */
+function extractPartidos(response) {
+  if (!response) return [];
+  const datos = response.datos || response;
+  if (Array.isArray(datos)) return datos;
+  if (datos.ListaPartidos) return datos.ListaPartidos;
+  if (datos.partidos) return datos.partidos;
+  return [];
+}
+
 // ============================================================
 // Flujo principal
 // ============================================================
@@ -455,113 +567,66 @@ async function main() {
 
   // Paso 0: Registrar dispositivo
   await registerDevice();
+  console.log(`  URL dinámica activa: ${BASE_URL_DYNAMIC}`);
   await sleep(DELAY_MS);
 
-  // Paso 1: Obtener delegaciones
-  console.log('\n--- Obteniendo delegaciones ---');
-  let delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' });
-  if (!delegaciones || delegaciones.resultado === 'error') {
-    delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' }, BASE_URL_STATIC + '/v2');
-  }
-  if (delegaciones) saveData('delegaciones.json', delegaciones);
-  await sleep(DELAY_MS);
-
-  // Paso 2: Obtener competiciones
-  const competiciones = await getCompeticiones();
-  await sleep(DELAY_MS);
-
-  if (!competiciones || competiciones.resultado === 'error') {
-    console.log('\nProbando variantes de endpoints...');
-
-    const probes = [
-      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_DYNAMIC],
-      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_STATIC],
-      ['categoria.ashx', { accion: 'categorias' }, BASE_URL_DYNAMIC],
-    ];
-
-    for (const [endpoint, params, base] of probes) {
-      console.log(`\nProbando ${base}/${endpoint}?accion=${params.accion}...`);
-      const result = await apiCall(endpoint, params, base);
-      if (result) {
-        const label = base.includes('/v2') ? 'v2' : 'static';
-        saveData(`probe_${params.accion}_${label}.json`, result);
-        if (result.resultado === 'correcto') {
-          console.log('  Encontrado endpoint funcional!');
-        }
-      }
-      await sleep(DELAY_MS);
-    }
-  }
-
-  // Paso 3: Si tenemos competiciones, obtener fases/grupos
-  if (competiciones && Array.isArray(competiciones.datos)) {
-    const febambaComps = competiciones.datos.filter(c =>
-      c.NombreDelegacion?.includes('Buenos Aires') ||
-      c.NombreCompeticion?.includes('FEBAMBA') ||
-      c.Delegacion?.includes('Buenos Aires')
-    );
-
-    const targetComps = febambaComps.length > 0 ? febambaComps : competiciones.datos.slice(0, 3);
-
-    for (const comp of targetComps) {
-      const compId = comp.IdCategoriaCompeticion || comp.Id || comp.id;
-      if (!compId) continue;
-
-      console.log(`\nCompeticion: ${comp.NombreCompeticion || comp.Nombre || JSON.stringify(comp)}`);
-
-      const fasesGrupos = await getFasesGrupos(compId);
-      await sleep(DELAY_MS);
-
-      if (fasesGrupos && fasesGrupos.datos) {
-        saveData(`fases_grupos_${compId}.json`, fasesGrupos);
-
-        const fases = fasesGrupos.datos.ListaFases || fasesGrupos.datos.Fases || [fasesGrupos.datos];
-        for (const fase of (Array.isArray(fases) ? fases : [fases])) {
-          const faseId = fase.IdFase || fase.Id;
-          const grupos = fase.ListaGrupos || fase.Grupos || [fase];
-
-          for (const grupo of (Array.isArray(grupos) ? grupos : [grupos])) {
-            const grupoId = grupo.IdGrupo || grupo.Id;
-
-            const clasificacion = await getClasificacion(compId, faseId, grupoId);
-            if (clasificacion) saveData(`clasificacion_${compId}_${faseId}_${grupoId}.json`, clasificacion);
-            await sleep(DELAY_MS);
-
-            const partidos = await getPartidos(compId, faseId, grupoId);
-            if (partidos) saveData(`partidos_${compId}_${faseId}_${grupoId}.json`, partidos);
-            await sleep(DELAY_MS);
-
-            if (partidos && partidos.datos) {
-              const listaPartidos = Array.isArray(partidos.datos) ? partidos.datos : partidos.datos.ListaPartidos || [];
-              const partidosConStats = listaPartidos
-                .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado')
-                .slice(0, 3);
-
-              for (const partido of partidosConStats) {
-                const partidoId = partido.IdPartido || partido.Id || partido.id;
-                if (!partidoId) continue;
-
-                const stats = await getEstadisticasPartido(partidoId);
-                if (stats) saveData(`stats_partido_${partidoId}.json`, stats);
-                await sleep(DELAY_MS);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Paso 4: Búsquedas
-  console.log('\n--- Búsquedas ---');
-
-  const busquedaFebamba = await buscar('Categoria', 'FEBAMBA');
-  if (busquedaFebamba) saveData('busqueda_febamba.json', busquedaFebamba);
-  await sleep(DELAY_MS);
-
+  // Paso 1: Buscar competiciones de FEBAMBA via búsqueda
+  // (categoria.ashx con accion=competiciones requiere parámetros adicionales,
+  //  pero busqueda.ashx funciona directamente y devuelve las competiciones en "categorias")
+  console.log('\n--- Buscando competiciones FEBAMBA ---');
   const busquedaBA = await buscar('Categoria', 'Buenos Aires');
   if (busquedaBA) saveData('busqueda_buenos_aires.json', busquedaBA);
+  await sleep(DELAY_MS);
 
+  // Extraer competiciones de FEBAMBA del resultado de búsqueda
+  const categorias = busquedaBA?.categorias || [];
+  const febambaComps = categorias.filter(c =>
+    c.NombreDelegacion?.includes('METROPOLITANA') ||
+    c.NombreDelegacion?.includes('BUENOS AIRES')
+  );
+
+  console.log(`  Encontradas ${categorias.length} competiciones total`);
+  console.log(`  FEBAMBA/Buenos Aires: ${febambaComps.length}`);
+
+  if (febambaComps.length === 0) {
+    console.log('  No se encontraron competiciones de FEBAMBA/Buenos Aires');
+    if (categorias.length > 0) {
+      console.log('  Delegaciones encontradas:');
+      const delegaciones = [...new Set(categorias.map(c => c.NombreDelegacion))];
+      delegaciones.forEach(d => console.log(`    - ${d}`));
+    }
+  }
+
+  // Mostrar las competiciones encontradas
+  for (const comp of febambaComps) {
+    console.log(`  - [${comp.IdCompeticionCategoria}] ${comp.NombreCompeticion} / ${comp.NombreCategoria}`);
+  }
+
+  // Paso 2: Scrapear competiciones principales de FEBAMBA
+  // Priorizar: SUPERIOR 2026 (primera división), FORMATIVAS 2026
+  const priorityOrder = ['SUPERIOR', 'FLEX SUPERIOR', 'FORMATIVAS', 'FLEX FORMATIVAS', 'MASTER'];
+  const sortedComps = [...febambaComps].sort((a, b) => {
+    const aIdx = priorityOrder.findIndex(p => a.NombreCompeticion?.includes(p));
+    const bIdx = priorityOrder.findIndex(p => b.NombreCompeticion?.includes(p));
+    return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+  });
+
+  // Scrapear las primeras 5 competiciones (para no sobrecargar)
+  const maxComps = 5;
+  const targetComps = sortedComps.slice(0, maxComps);
+
+  console.log(`\n--- Scrapeando ${targetComps.length} competiciones ---`);
+
+  for (const comp of targetComps) {
+    try {
+      await scrapeCompeticion(comp);
+    } catch (err) {
+      console.error(`  Error scrapeando ${comp.NombreCompeticion}: ${err.message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+
+  // Paso 3: Resumen
   console.log('\n===========================================');
   console.log(' Scraping completado!');
   console.log('===========================================');
