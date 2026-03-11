@@ -545,14 +545,20 @@ async function scrapeCompeticion(comp) {
       // 2. Clasificación (standings)
       const clasificacion = await getClasificacion(compIdDecoded, faseId, grupoId);
       if (clasificacion && clasificacion.resultado !== 'error') {
-        saveData(`clasificacion_${compIdSafe}_${faseId}_${grupoId}.json`, clasificacion);
+        saveData(`clasificacion_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, clasificacion);
+        console.log(`    Clasificación OK: resultado=${clasificacion.resultado}`);
+      } else {
+        console.log(`    Clasificación: sin datos o error`, clasificacion ? JSON.stringify(clasificacion).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
-      // 3. Partidos
-      const partidos = await getPartidos(compIdDecoded, faseId, grupoId);
-      if (partidos && partidos.resultado !== 'error') {
-        saveData(`partidos_${compIdSafe}_${faseId}_${grupoId}.json`, partidos);
+      // 3. Jornadas (match schedule - via categoria.ashx, NOT partidos.ashx)
+      const jornadas = await getJornadas(compIdDecoded, faseId, grupoId);
+      if (jornadas && jornadas.resultado !== 'error') {
+        saveData(`jornadas_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, jornadas);
+        console.log(`    Jornadas OK: resultado=${jornadas.resultado}`);
+      } else {
+        console.log(`    Jornadas: sin datos o error`, jornadas ? JSON.stringify(jornadas).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
@@ -570,9 +576,9 @@ async function scrapeCompeticion(comp) {
         }
       }
 
-      // Extraer IDs de equipo de los partidos (local y visitante)
-      if (partidos) {
-        const listaP = extractPartidos(partidos);
+      // Extraer IDs de equipo de las jornadas (partidos local y visitante)
+      if (jornadas) {
+        const listaP = extractPartidos(jornadas);
         for (const p of listaP) {
           if (p.IdEquipoLocal) equipoIds.add(p.IdEquipoLocal);
           if (p.IdEquipoVisitante) equipoIds.add(p.IdEquipoVisitante);
@@ -598,8 +604,8 @@ async function scrapeCompeticion(comp) {
       }
 
       // 5. Estadísticas de partidos finalizados (limitar a 5)
-      if (partidos) {
-        const listaPartidos = extractPartidos(partidos);
+      if (jornadas) {
+        const listaPartidos = extractPartidos(jornadas);
         const finalizados = listaPartidos
           .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado')
           .slice(0, 5);
@@ -622,7 +628,7 @@ async function scrapeCompeticion(comp) {
         }
       }
 
-      results.fases.push({ faseId, faseName, grupoId, grupoName, clasificacion, partidos });
+      results.fases.push({ faseId, faseName, grupoId, grupoName, clasificacion, jornadas });
   }
 
   return results;
@@ -637,6 +643,23 @@ function extractPartidos(response) {
   if (Array.isArray(datos)) return datos;
   if (datos.ListaPartidos) return datos.ListaPartidos;
   if (datos.partidos) return datos.partidos;
+  // Jornadas response: extract partidos from all jornadas
+  if (datos.ListaJornadas) {
+    const allPartidos = [];
+    for (const jornada of datos.ListaJornadas) {
+      const partidos = jornada.ListaPartidos || jornada.Partidos || [];
+      allPartidos.push(...partidos);
+    }
+    return allPartidos;
+  }
+  if (datos.listaJornadas) {
+    const allPartidos = [];
+    for (const jornada of datos.listaJornadas) {
+      const partidos = jornada.listaPartidos || jornada.partidos || [];
+      allPartidos.push(...partidos);
+    }
+    return allPartidos;
+  }
   return [];
 }
 
