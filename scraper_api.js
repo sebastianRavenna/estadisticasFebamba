@@ -2,8 +2,19 @@
  * Scraper para la API de Indalweb/GesDeportiva - CABB/FEBAMBA
  * Usa la API directa descubierta desde el APK de la app CABB
  *
- * IMPORTANTE: La API usa POST con Content-Type: application/x-www-form-urlencoded
- * (descubierto deofuscando el método GetJSON del APK)
+ * Flujo de autenticación (deobfuscado del APK main.b3d70c09e1bc11b9.js):
+ *
+ *   1. Dispositivo nuevo (sin id_dispositivo almacenado):
+ *      POST dispositivo.ashx → accion=registrar, uid, plataforma, tipo_dispositivo, version
+ *      → El servidor responde con id_dispositivo (asignado por servidor) + key
+ *
+ *   2. Dispositivo existente (tiene id_dispositivo):
+ *      POST dispositivo.ashx → accion=acceso, uid, plataforma, tipo_dispositivo,
+ *                               id_dispositivo, token_push, version
+ *      → El servidor responde con key actualizada
+ *
+ * Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+ * El body se envía como params.toString() via Angular HttpClient.post()
  *
  * Uso: node scraper_api.js
  * Genera archivos JSON en data/
@@ -17,18 +28,27 @@ const crypto = require('crypto');
 // Configuración
 // ============================================================
 const BASE_URL_STATIC = 'https://appaficioncabb.indalweb.net';
-const BASE_URL = 'https://appaficioncabb.indalweb.net/v2';
+let BASE_URL_DYNAMIC = 'https://appaficioncabb.indalweb.net/v2';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSION_FILE = path.join(__dirname, 'data', '.session.json');
 const DELAY_MS = 1500;
 
-// Versión de la app: 4.0.44 → versionAPPNumerico = 040044 → parseInt = 40044
+// Versión de la app: 4.0.44 → split('.') → pad each to 2 digits → '040044' → parseInt = 40044
 const APP_VERSION = '40044';
 
+/**
+ * Genera un uid simulando el formato de Android ID (Cordova device.uuid).
+ * Android ID es un string hexadecimal de 16 caracteres.
+ */
+function generateAndroidId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
 let SESSION = {
-  id_dispositivo: '07f2c40994f8705d',
+  id_dispositivo: '',
   key: '',
   uid: '',
+  urlServidorDinamica: '',
 };
 
 // ============================================================
@@ -66,8 +86,8 @@ function saveSession() {
 }
 
 /**
- * Hacer una llamada POST con application/x-www-form-urlencoded
- * Así es como la app real hace las llamadas (método GetJSON deofuscado)
+ * Hacer una llamada POST con application/x-www-form-urlencoded;charset=UTF-8
+ * Replica exactamente el método GetJSON del APK (Angular HttpClient.post)
  */
 async function postAPI(url, params) {
   const body = new URLSearchParams(params).toString();
@@ -77,15 +97,18 @@ async function postAPI(url, params) {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
       'Accept': 'application/json, text/plain, */*',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      'Origin': 'https://appaficioncabb.indalweb.net',
     },
     body: body,
   });
 
   if (!response.ok) {
     console.error(`  Error HTTP ${response.status}: ${response.statusText}`);
+    const text = await response.text().catch(() => '');
+    if (text) console.error(`  Response body: ${text.substring(0, 300)}`);
     return null;
   }
 
@@ -99,21 +122,76 @@ async function postAPI(url, params) {
 }
 
 /**
- * Paso 0: Registrar dispositivo y obtener id_dispositivo + key
+ * Procesa la respuesta del servidor (replica UltimaActualizacion del APK).
+ * Extrae key, id_dispositivo y urlServidorDinamica de la respuesta.
  */
-async function registerDevice() {
-  console.log('\n--- Registrando dispositivo ---');
+function processAuthResponse(data) {
+  if (data.resultado !== 'correcto') return false;
 
-  if (loadSession() && SESSION.id_dispositivo && SESSION.key) {
-    console.log('  Usando sesión previa');
-    return true;
+  if (data.key) {
+    SESSION.key = data.key;
   }
+  if (data.id_dispositivo) {
+    SESSION.id_dispositivo = data.id_dispositivo;
+  }
+  if (data.urlServidorDinamica) {
+    SESSION.urlServidorDinamica = data.urlServidorDinamica;
+    BASE_URL_DYNAMIC = data.urlServidorDinamica + (data.urlServidorDinamica.endsWith('/') ? 'v2/' : '/v2/');
+    console.log(`  URL dinámica actualizada: ${BASE_URL_DYNAMIC}`);
+  }
+  return true;
+}
 
-  if (!SESSION.uid) SESSION.uid = crypto.randomUUID();
-  console.log(`  id_dispositivo: ${SESSION.id_dispositivo}`);
-  console.log(`  uid: ${SESSION.uid}`);
+/**
+ * Fase 1: Registrar dispositivo nuevo (accion=registrar).
+ * Se usa cuando NO hay id_dispositivo almacenado.
+ * El servidor asigna un id_dispositivo y devuelve una key.
+ *
+ * Deobfuscado de función 0xedf en main.b3d70c09e1bc11b9.js:
+ *   url = urlServidor + 'dispositivo.ashx'
+ *   params = { accion:'registrar', uid:device.uuid, plataforma, tipo_dispositivo, version }
+ *   // NO envía id_dispositivo ni token_push
+ */
+async function registerNewDevice() {
+  console.log('  Registrando dispositivo nuevo (accion=registrar)...');
 
-  // Llamar a dispositivo.ashx con POST (como lo hace la app real)
+  const url = `${BASE_URL_STATIC}/dispositivo.ashx`;
+  const params = {
+    accion: 'registrar',
+    uid: SESSION.uid,
+    plataforma: 'android',
+    tipo_dispositivo: 'android',
+    version: APP_VERSION,
+  };
+
+  const data = await postAPI(url, params);
+  if (data) {
+    saveData('debug_registro.json', data);
+    if (processAuthResponse(data)) {
+      console.log(`  Dispositivo registrado! id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
+      if (data.error === 'uuid ya registrado') {
+        console.log('  (uuid ya existía en el servidor, reutilizando)');
+      }
+      saveSession();
+      return true;
+    }
+    console.log(`  Registro falló: resultado=${data.resultado}, error=${data.error || 'ninguno'}`);
+  }
+  return false;
+}
+
+/**
+ * Fase 2: Acceso con dispositivo existente (accion=acceso).
+ * Se usa cuando YA hay id_dispositivo almacenado pero la key expiró.
+ *
+ * Deobfuscado de función 0x836 (GuardarKey) en main.b3d70c09e1bc11b9.js:
+ *   url = urlServidor + 'dispositivo.ashx'
+ *   params = { accion:'acceso', uid:device.uuid, plataforma, tipo_dispositivo,
+ *              id_dispositivo, token_push, version }
+ */
+async function accessExistingDevice() {
+  console.log('  Accediendo con dispositivo existente (accion=acceso)...');
+
   const url = `${BASE_URL_STATIC}/dispositivo.ashx`;
   const params = {
     accion: 'acceso',
@@ -125,35 +203,79 @@ async function registerDevice() {
     version: APP_VERSION,
   };
 
-  try {
-    const data = await postAPI(url, params);
-    if (data) {
-      saveData('debug_registro.json', data);
-
-      if (data.resultado === 'correcto' || data.key) {
-        SESSION.key = data.key || '';
-        if (data.id_dispositivo) SESSION.id_dispositivo = data.id_dispositivo;
-        saveSession();
-        console.log(`  Dispositivo registrado! id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
-        return true;
-      }
-      console.log(`  Resultado: ${data.resultado || 'desconocido'}, error: ${data.error || 'ninguno'}`);
+  const data = await postAPI(url, params);
+  if (data) {
+    saveData('debug_acceso.json', data);
+    if (processAuthResponse(data)) {
+      console.log(`  Acceso exitoso! key=${SESSION.key ? 'OK' : 'vacía'}`);
+      saveSession();
+      return true;
     }
-  } catch (err) {
-    console.error(`  Error de red: ${err.message}`);
+    console.log(`  Acceso falló: resultado=${data.resultado}, error=${data.error || 'ninguno'}`);
   }
-
-  console.log('  No se obtuvo key, intentando sin key...');
-  return SESSION.id_dispositivo ? true : false;
+  return false;
 }
 
 /**
- * Llamada genérica a la API usando POST
+ * Flujo completo de autenticación (replica el flujo del APK):
+ *   1. Si hay sesión guardada con id_dispositivo + key → usar directamente
+ *   2. Si hay sesión con id_dispositivo pero sin key → accion=acceso
+ *   3. Si no hay id_dispositivo → accion=registrar (dispositivo nuevo)
  */
-async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
+async function registerDevice() {
+  console.log('\n--- Autenticación de dispositivo ---');
+
+  const hasSession = loadSession();
+
+  if (hasSession && SESSION.urlServidorDinamica) {
+    BASE_URL_DYNAMIC = SESSION.urlServidorDinamica + (SESSION.urlServidorDinamica.endsWith('/') ? 'v2/' : '/v2/');
+  }
+
+  // Caso 1: Sesión completa existente
+  if (hasSession && SESSION.id_dispositivo && SESSION.key) {
+    console.log('  Usando sesión previa (id_dispositivo + key presentes)');
+    return true;
+  }
+
+  // Generar uid si no existe (simula Cordova device.uuid = Android ID)
+  if (!SESSION.uid) {
+    SESSION.uid = generateAndroidId();
+    console.log(`  Nuevo uid generado: ${SESSION.uid}`);
+  }
+
+  // Caso 2: Tiene id_dispositivo pero no key → acceso para refrescar key
+  if (hasSession && SESSION.id_dispositivo && !SESSION.key) {
+    console.log('  id_dispositivo existe pero key expirada, intentando acceso...');
+    try {
+      if (await accessExistingDevice()) return true;
+    } catch (err) {
+      console.error(`  Error en acceso: ${err.message}`);
+    }
+    // Si falla acceso, intentar registrar de nuevo
+    console.log('  Acceso falló, intentando registro nuevo...');
+  }
+
+  // Caso 3: No hay id_dispositivo → registrar dispositivo nuevo
+  try {
+    if (await registerNewDevice()) return true;
+  } catch (err) {
+    console.error(`  Error en registro: ${err.message}`);
+  }
+
+  console.log('  Autenticación falló. Continuando sin key (algunos endpoints pueden funcionar)...');
+  return false;
+}
+
+/**
+ * Llamada genérica a la API usando POST.
+ * Usa urlServidorDinamica (BASE_URL_DYNAMIC) para endpoints de datos,
+ * como hace la app real tras recibir la URL dinámica del servidor.
+ */
+async function apiCall(endpoint, params = {}, baseUrl = null) {
+  if (!baseUrl) baseUrl = BASE_URL_DYNAMIC;
   const url = `${baseUrl}/${endpoint}`;
 
-  // Agregar parámetros de sesión
+  // Agregar parámetros de sesión (como hace la app: localStorage.getItem('idDispositivo'), sessionStorage.getItem('key'))
   if (SESSION.id_dispositivo) {
     params.id_dispositivo = params.id_dispositivo || SESSION.id_dispositivo;
   }
@@ -165,10 +287,17 @@ async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
     const data = await postAPI(url, params);
 
     if (data && data.resultado === 'error' && data.error === 'Sesión caducada') {
-      console.log('  Sesión caducada, re-registrando...');
+      console.log('  Sesión caducada, renovando key...');
       SESSION.key = '';
-      await registerDevice();
-      return apiCall(endpoint, params, baseUrl);
+      if (SESSION.id_dispositivo) {
+        await accessExistingDevice();
+      } else {
+        await registerNewDevice();
+      }
+      // Reintentar con la nueva key
+      params.key = SESSION.key;
+      params.id_dispositivo = SESSION.id_dispositivo;
+      return postAPI(url, params);
     }
 
     return data;
@@ -318,9 +447,9 @@ async function main() {
   console.log('===========================================');
   console.log(' Scraper API CABB/FEBAMBA - Indalweb');
   console.log('===========================================');
-  console.log(`Base URL: ${BASE_URL}`);
+  console.log(`Base URL estática: ${BASE_URL_STATIC}`);
   console.log(`Data dir: ${DATA_DIR}`);
-  console.log(`Método: POST (application/x-www-form-urlencoded)`);
+  console.log(`Método: POST (application/x-www-form-urlencoded;charset=UTF-8)`);
 
   ensureDataDir();
 
@@ -332,7 +461,7 @@ async function main() {
   console.log('\n--- Obteniendo delegaciones ---');
   let delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' });
   if (!delegaciones || delegaciones.resultado === 'error') {
-    delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' }, BASE_URL_STATIC);
+    delegaciones = await apiCall('delegaciones.ashx', { accion: 'delegaciones' }, BASE_URL_STATIC + '/v2');
   }
   if (delegaciones) saveData('delegaciones.json', delegaciones);
   await sleep(DELAY_MS);
@@ -345,16 +474,17 @@ async function main() {
     console.log('\nProbando variantes de endpoints...');
 
     const probes = [
-      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL],
+      ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_DYNAMIC],
       ['categoria.ashx', { accion: 'competiciones' }, BASE_URL_STATIC],
-      ['categoria.ashx', { accion: 'categorias' }, BASE_URL],
+      ['categoria.ashx', { accion: 'categorias' }, BASE_URL_DYNAMIC],
     ];
 
     for (const [endpoint, params, base] of probes) {
       console.log(`\nProbando ${base}/${endpoint}?accion=${params.accion}...`);
       const result = await apiCall(endpoint, params, base);
       if (result) {
-        saveData(`probe_${params.accion}_${base === BASE_URL ? 'v2' : 'static'}.json`, result);
+        const label = base.includes('/v2') ? 'v2' : 'static';
+        saveData(`probe_${params.accion}_${label}.json`, result);
         if (result.resultado === 'correcto') {
           console.log('  Encontrado endpoint funcional!');
         }
