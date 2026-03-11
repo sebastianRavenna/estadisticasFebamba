@@ -494,28 +494,52 @@ async function scrapeCompeticion(comp) {
 
   saveData(`fases_grupos_${compIdSafe}.json`, fasesGrupos);
 
-  // Extraer la lista de fases del response (puede venir en distintos formatos)
-  const datos = fasesGrupos.datos || fasesGrupos;
-  const fases = datos.ListaFases || datos.Fases || (datos.IdFase ? [datos] : []);
+  // La respuesta de fasesGrupos tiene: { faseActual, grupoActual, listaFasesGrupo: [...] }
+  // Cada elemento de listaFasesGrupo tiene: { IdFase, NombreFase, ListaGrupos: [{IdGrupo, NombreGrupo}] }
+  const listaFases = fasesGrupos.listaFasesGrupo || [];
+  const faseActual = fasesGrupos.faseActual;
+  const grupoActual = fasesGrupos.grupoActual;
 
-  if (!fases.length) {
-    console.log('  No se encontraron fases. Estructura:', JSON.stringify(datos).substring(0, 300));
-    return fasesGrupos;
+  // Construir lista de combinaciones fase/grupo a scrapear
+  const fasesGruposToScrape = [];
+
+  if (listaFases.length > 0) {
+    // Hay fases/grupos explícitos
+    for (const fase of listaFases) {
+      const faseId = fase.IdFase || fase.Id;
+      const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
+      const grupos = fase.ListaGrupos || fase.Grupos || [];
+      if (grupos.length > 0) {
+        for (const grupo of grupos) {
+          fasesGruposToScrape.push({
+            faseId, faseName,
+            grupoId: grupo.IdGrupo || grupo.Id,
+            grupoName: grupo.NombreGrupo || grupo.Nombre || 'Default',
+          });
+        }
+      } else {
+        // Fase sin grupos explícitos
+        fasesGruposToScrape.push({ faseId, faseName, grupoId: '', grupoName: 'Único' });
+      }
+    }
+  } else if (faseActual) {
+    // No hay lista pero hay faseActual/grupoActual del servidor
+    fasesGruposToScrape.push({
+      faseId: faseActual, faseName: `Fase ${faseActual}`,
+      grupoId: grupoActual || '', grupoName: grupoActual ? `Grupo ${grupoActual}` : 'Único',
+    });
+  } else {
+    // Sin fases ni grupos - intentar con valores vacíos
+    console.log('  Sin fases/grupos configurados, intentando con params vacíos...');
+    fasesGruposToScrape.push({ faseId: '', faseName: 'Default', grupoId: '', grupoName: 'Default' });
   }
+
+  console.log(`  Combinaciones fase/grupo a scrapear: ${fasesGruposToScrape.length}`);
 
   const results = { competicion: compName, compId: compIdNumeric, fases: [] };
 
-  for (const fase of (Array.isArray(fases) ? fases : [fases])) {
-    const faseId = fase.IdFase || fase.Id;
-    const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
-    const grupos = fase.ListaGrupos || fase.Grupos || (fase.IdGrupo ? [fase] : []);
-
-    console.log(`\n  Fase: ${faseName} (id=${faseId})`);
-
-    for (const grupo of (Array.isArray(grupos) ? grupos : [grupos])) {
-      const grupoId = grupo.IdGrupo || grupo.Id;
-      const grupoName = grupo.NombreGrupo || grupo.Nombre || `Grupo ${grupoId}`;
-
+  for (const { faseId, faseName, grupoId, grupoName } of fasesGruposToScrape) {
+      console.log(`\n  Fase: ${faseName} (id=${faseId})`);
       console.log(`    Grupo: ${grupoName} (id=${grupoId})`);
 
       // 2. Clasificación (standings)
@@ -599,7 +623,6 @@ async function scrapeCompeticion(comp) {
       }
 
       results.fases.push({ faseId, faseName, grupoId, grupoName, clasificacion, partidos });
-    }
   }
 
   return results;
