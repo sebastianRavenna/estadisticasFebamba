@@ -512,24 +512,69 @@ async function scrapeCompeticion(comp) {
       }
       await sleep(DELAY_MS);
 
-      // 4. Estadísticas de partidos finalizados (limitar a 5)
+      // 4. Equipos y jugadores (desde clasificación o partidos)
+      const equipoIds = new Set();
+
+      // Extraer IDs de equipo de la clasificación
+      if (clasificacion) {
+        const clasifData = clasificacion.datos || clasificacion.clasificacion || clasificacion;
+        const equipos = Array.isArray(clasifData) ? clasifData :
+          clasifData.ListaClasificacion || clasifData.Clasificacion || [];
+        for (const eq of (Array.isArray(equipos) ? equipos : [])) {
+          const eqId = eq.IdEquipo || eq.Id;
+          if (eqId) equipoIds.add(eqId);
+        }
+      }
+
+      // Extraer IDs de equipo de los partidos (local y visitante)
+      if (partidos) {
+        const listaP = extractPartidos(partidos);
+        for (const p of listaP) {
+          if (p.IdEquipoLocal) equipoIds.add(p.IdEquipoLocal);
+          if (p.IdEquipoVisitante) equipoIds.add(p.IdEquipoVisitante);
+        }
+      }
+
+      console.log(`    Equipos encontrados: ${equipoIds.size}`);
+
+      for (const eqId of equipoIds) {
+        // Obtener detalle del equipo (incluye entrenador)
+        const equipo = await getEquipo(eqId);
+        if (equipo && equipo.resultado !== 'error') {
+          saveData(`equipo_${eqId}.json`, equipo);
+        }
+        await sleep(DELAY_MS);
+
+        // Obtener jugadores del equipo
+        const jugadores = await getJugadores(eqId, compId);
+        if (jugadores && jugadores.resultado !== 'error') {
+          saveData(`jugadores_${eqId}_${compIdSafe}.json`, jugadores);
+        }
+        await sleep(DELAY_MS);
+      }
+
+      // 5. Estadísticas de partidos finalizados (limitar a 5)
       if (partidos) {
         const listaPartidos = extractPartidos(partidos);
         const finalizados = listaPartidos
           .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado')
           .slice(0, 5);
 
-        console.log(`    Partidos finalizados: ${finalizados.length} de ${listaPartidos.length} total`);
+        if (finalizados.length > 0) {
+          console.log(`    Partidos finalizados: ${finalizados.length} de ${listaPartidos.length} total`);
 
-        for (const partido of finalizados) {
-          const partidoId = partido.IdPartido || partido.Id || partido.id;
-          if (!partidoId) continue;
+          for (const partido of finalizados) {
+            const partidoId = partido.IdPartido || partido.Id || partido.id;
+            if (!partidoId) continue;
 
-          const stats = await getEstadisticasPartido(partidoId);
-          if (stats && stats.resultado !== 'error') {
-            saveData(`stats_partido_${partidoId}.json`, stats);
+            const stats = await getEstadisticasPartido(partidoId);
+            if (stats && stats.resultado !== 'error') {
+              saveData(`stats_partido_${partidoId}.json`, stats);
+            }
+            await sleep(DELAY_MS);
           }
-          await sleep(DELAY_MS);
+        } else {
+          console.log(`    Sin partidos finalizados aún (${extractPartidos(partidos).length} programados)`);
         }
       }
 
