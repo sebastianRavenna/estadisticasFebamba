@@ -1,0 +1,28 @@
+{
+  "resultado": "error",
+  "id_dispositivo": "",
+  "key": "",
+  "ruta": "",
+  "equipo": {
+    "Id": "",
+    "IdClub": null,
+    "IdCategoria": null,
+    "IdCompeticion": null,
+    "IdCategoriaCompeticion": null,
+    "IdEquipoNotificacion": null,
+    "Nombre": "",
+    "Club": "",
+    "Escudo": "",
+    "Delegacion": "",
+    "Competicion": "",
+    "Categoria": null,
+    "Temporada": null,
+    "PartidosJugados": 0,
+    "PartidosPerdidos": 0,
+    "PartidosGanados": 0,
+    "MediaPuntos": 0,
+    "MediaPuntosEncajados": 0
+  },
+  "jornadas": null,
+  "error": "Faltan parámetros"
+}
