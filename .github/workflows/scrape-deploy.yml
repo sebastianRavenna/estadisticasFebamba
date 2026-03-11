@@ -1,0 +1,78 @@
+name: Scrape & Deploy
+
+on:
+  # Manual trigger with optional parameters
+  workflow_dispatch:
+    inputs:
+      full_scrape:
+        description: 'Run full scrape (all competitions) instead of quick (SUPERIOR only)'
+        required: false
+        default: 'false'
+        type: boolean
+
+# Only allow one scrape at a time
+concurrency:
+  group: scrape-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Run scraper
+        run: |
+          if [ "${{ inputs.full_scrape }}" = "true" ]; then
+            echo "Running full scraper..."
+            node scraper_api.js
+          else
+            echo "Running quick scraper (SUPERIOR 2026)..."
+            node scrape_quick.js
+          fi
+
+      - name: Build static data
+        run: node build_data.js
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/dashboard_data.json data/busqueda_buenos_aires.json data/fases_grupos_*.json
+          git diff --cached --quiet && echo "No changes to commit" || \
+            git commit -m "Update dashboard data $(date -u +%Y-%m-%d)" && \
+            git push
+
+      - name: Prepare GitHub Pages
+        run: |
+          mkdir -p _site/data
+          cp dashboard.html _site/index.html
+          cp data/dashboard_data.json _site/data/dashboard_data.json
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: scrape
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

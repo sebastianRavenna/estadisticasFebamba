@@ -16,3 +16,5 @@ test_fasesgrupos.js
 test_scraper_quick.js
 data/test_*.json
 data/debug_*.json
+data/.session.json
+test_*.js

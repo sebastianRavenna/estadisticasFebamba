@@ -824,14 +824,24 @@
 
     // Competition selector change
     document.getElementById('compSelect').addEventListener('change', function() {
-      if (this.value) loadCompetitionData(this.value);
+      if (!this.value) return;
+      if (IS_SERVER) {
+        loadCompetitionData(this.value);
+      } else {
+        loadStaticCompetition(this.value);
+      }
     });
 
     // Fase/grupo selector change
     document.getElementById('faseGrupoSelect').addEventListener('change', function() {
       const compId = document.getElementById('compSelect').value;
       const [faseTag, grupoTag] = this.value.split('|');
-      if (compId && faseTag && grupoTag) loadCompetitionData(compId, faseTag, grupoTag);
+      if (!compId || !faseTag || !grupoTag) return;
+      if (IS_SERVER) {
+        loadCompetitionData(compId, faseTag, grupoTag);
+      } else {
+        loadStaticCompetition(compId, faseTag, grupoTag);
+      }
     });
 
     // Scrape button
@@ -858,16 +868,98 @@
       }
     });
 
+    // All static data loaded from dashboard_data.json
+    let STATIC_DATA = null;
+
     // Load from static file (fallback)
     async function loadFromFile() {
       try {
-        const resp = await fetch('./data/sample_data.json');
-        DATA = await resp.json();
+        const resp = await fetch('./data/dashboard_data.json');
+        if (!resp.ok) throw new Error('Not found');
+        STATIC_DATA = await resp.json();
       } catch {
-        console.warn('Could not load sample_data.json, using inline fallback');
+        console.warn('Could not load dashboard_data.json, using inline fallback');
+        STATIC_DATA = null;
         DATA = getInlineData();
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        initDashboard();
+        return;
       }
-      document.getElementById('dataSource').textContent = 'Datos de muestra';
+
+      // Populate competitions from static data
+      COMPETITIONS = (STATIC_DATA.competitions || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        delegacion: c.delegacion,
+        hasData: c.fases && c.fases.some(f => f.hasData),
+      }));
+      populateCompSelect();
+
+      // Load first competition with data
+      const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+      if (firstWithData) {
+        document.getElementById('compSelect').value = firstWithData.id;
+        loadStaticCompetition(firstWithData.id);
+      } else {
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        DATA = getInlineData();
+        initDashboard();
+      }
+    }
+
+    function loadStaticCompetition(compId, faseTag, grupoTag) {
+      if (!STATIC_DATA) return;
+      const comp = STATIC_DATA.competitions.find(c => String(c.id) === String(compId));
+      if (!comp || !comp.fases || comp.fases.length === 0) {
+        DATA = getInlineData();
+        DATA.competition = { name: comp?.name || '', category: comp?.category || '', season: '2026' };
+        document.getElementById('dataSource').textContent = `${comp?.name || 'Sin datos'} (sin datos)`;
+        initDashboard();
+        return;
+      }
+
+      // Find the requested fase/grupo or use first one
+      let fase = comp.fases[0];
+      if (faseTag && grupoTag) {
+        const found = comp.fases.find(f => f.faseTag === faseTag && f.grupoTag === grupoTag);
+        if (found) fase = found;
+      }
+
+      // Build DATA in the same format the dashboard expects
+      DATA = {
+        meta: STATIC_DATA.meta,
+        competition: {
+          id: comp.id,
+          name: comp.name,
+          category: comp.category,
+          season: comp.season || '2026',
+          delegacion: comp.delegacion,
+          fase: fase.faseName,
+          grupo: fase.grupoName,
+          tipoFase: fase.tipoFase,
+        },
+        standings: fase.standings || [],
+        matches: fase.matches || [],
+        schedule: fase.schedule || [],
+        players: [],
+        teamColors: {},
+        fases: comp.fases.map(f => ({
+          faseName: f.faseName,
+          grupoName: f.grupoName,
+          tipoFase: f.tipoFase,
+          faseTag: f.faseTag,
+          grupoTag: f.grupoTag,
+          hasClasificacion: f.standings && f.standings.length > 0,
+          hasJornadas: f.schedule && f.schedule.length > 0,
+        })),
+      };
+
+      populateFaseGrupoSelect(DATA.fases, fase.faseTag, fase.grupoTag);
+      const badge = document.getElementById('dataSource');
+      badge.textContent = `Datos: ${comp.name}`;
+      badge.style.borderColor = 'var(--win)';
+      badge.style.color = 'var(--win)';
       initDashboard();
     }
 
@@ -890,28 +982,33 @@
       reader.onload = function(ev) {
         try {
           const loaded = JSON.parse(ev.target.result);
-          if (loaded.standings || loaded.players) {
+          if (loaded.competitions) {
+            // Multi-competition format (dashboard_data.json)
+            STATIC_DATA = loaded;
+            COMPETITIONS = (loaded.competitions || []).map(c => ({
+              id: c.id, name: c.name, category: c.category, delegacion: c.delegacion,
+              hasData: c.fases && c.fases.some(f => f.hasData),
+            }));
+            populateCompSelect();
+            const first = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+            if (first) {
+              document.getElementById('compSelect').value = first.id;
+              loadStaticCompetition(first.id);
+            }
+          } else if (loaded.standings || loaded.matches) {
+            // Single competition format
             DATA = loaded;
-          } else if (loaded.competitions) {
-            DATA = convertScrapedData(loaded);
+            initDashboard();
           }
           document.getElementById('dataSource').textContent = 'Cargado: ' + file.name;
           document.getElementById('dataSource').style.borderColor = 'var(--win)';
           document.getElementById('dataSource').style.color = 'var(--win)';
-          initDashboard();
         } catch (err) {
           alert('Error parsing JSON: ' + err.message);
         }
       };
       reader.readAsText(file);
     });
-
-    function convertScrapedData(scraped) {
-      return {
-        competition: { name: "Datos Scrapeados", category: "", season: "" },
-        standings: [], players: [], matches: [], schedule: [], teamColors: {}
-      };
-    }
 
     // ========================================
     // INIT
