@@ -94,10 +94,61 @@
 - `buscarJugador` - Search players
 - `buscarPartido` - Search matches
 
+## Authentication Flow (deobfuscated from APK)
+
+### dispositivo.ashx - Device Authentication
+
+The app uses a two-phase device authentication, both via `dispositivo.ashx`:
+
+**Phase 1: New Device Registration** (`accion=registrar`)
+- Used when `localStorage.getItem('idDispositivo')` is null/empty
+- Called from function `0xedf` in `main.b3d70c09e1bc11b9.js`
+- POST to `urlServidor + 'dispositivo.ashx'`
+- Parameters:
+  - `accion`: `registrar`
+  - `uid`: `device.uuid` (Cordova Device plugin = Android ID, 16-char hex)
+  - `plataforma`: `android`
+  - `tipo_dispositivo`: `android`
+  - `version`: `versionAPPNumerico` (e.g., `40044` from version `4.0.44`)
+  - Does NOT send `id_dispositivo` or `token_push`
+- Response: `{ resultado: 'correcto', id_dispositivo: '...', key: '...', ... }`
+- If `uuid ya registrado` → server reuses existing device, still returns `id_dispositivo` + `key`
+
+**Phase 2: Existing Device Access** (`accion=acceso`)
+- Used when `localStorage.getItem('idDispositivo')` exists (subsequent app launches)
+- Called from function `0x836` (`GuardarKey`) in `main.b3d70c09e1bc11b9.js`
+- POST to `urlServidor + 'dispositivo.ashx'`
+- Parameters:
+  - `accion`: `acceso`
+  - `uid`: `device.uuid`
+  - `plataforma`: `android`
+  - `tipo_dispositivo`: `android`
+  - `id_dispositivo`: stored value from Phase 1
+  - `token_push`: Firebase push token (can be empty)
+  - `version`: `versionAPPNumerico`
+- Response: `{ resultado: 'correcto', key: '...', ... }`
+
+### Response Handling (`UltimaActualizacion` function)
+- `response.key` → stored in `sessionStorage.setItem('key', ...)`
+- `response.id_dispositivo` → stored in `localStorage.setItem('idDispositivo', ...)`
+- `response.urlServidorDinamica` → updates the dynamic API URL for data endpoints
+
+### registro.ashx - User Registration (separate from device)
+- Used for user profile registration (email, sexo, provincia, etc.)
+- Not required for data access
+
+### HTTP Headers
+- `Content-Type`: `application/x-www-form-urlencoded;charset=UTF-8`
+- Body: `URLSearchParams.toString()` (via Angular `HttpClient.post()`)
+
+### Version Calculation
+- App version string (e.g., `4.0.44`) → `split('.')` → pad each to 2 digits → concat → `parseInt`
+- `4.0.44` → `['4','0','44']` → `'040044'` → `parseInt('040044')` → `40044`
+
 ## Common Parameters
 - `accion` - Action to perform
-- `id_dispositivo` - Device ID (from localStorage)
-- `key` - Session key (from sessionStorage)
+- `id_dispositivo` - Device ID (from localStorage, server-assigned)
+- `key` - Session key (from sessionStorage, refreshed on each `acceso`)
 - `id_categoria_competicion` - Competition category ID
 - `id_fase` - Phase ID
 - `id_grupo` - Group ID
