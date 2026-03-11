@@ -342,7 +342,7 @@ async function getCompeticiones(params = {}) {
 async function getFasesGrupos(idCategoriaCompeticion) {
   console.log(`\n--- Obteniendo fases/grupos para competicion ${idCategoriaCompeticion} ---`);
   const data = await apiCall('categoria.ashx', {
-    accion: 'fasesGruposCompeticion',
+    accion: 'fasesGrupos',
     id_categoria_competicion: idCategoriaCompeticion,
   });
   return data;
