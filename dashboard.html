@@ -281,6 +281,7 @@
       padding: 0.8rem 1rem;
       border-bottom: 1px solid rgba(42, 58, 74, 0.5);
       gap: 1rem;
+      flex-wrap: wrap;
     }
 
     .match-card:last-child { border-bottom: none; }
@@ -451,7 +452,10 @@
       <div class="subtitle">Federacion de Basquetbol del Area Metropolitana de Buenos Aires</div>
     </div>
     <div class="header-right">
-      <span class="data-badge" id="dataSource">Datos de muestra</span>
+      <select class="filter-select" id="compSelect" style="max-width:220px;font-size:0.8rem;"></select>
+      <select class="filter-select" id="faseGrupoSelect" style="max-width:200px;font-size:0.8rem;"></select>
+      <span class="data-badge" id="dataSource">Cargando...</span>
+      <button class="data-badge" id="btnScrape" style="cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:var(--bg-hover);">Actualizar datos</button>
       <label class="data-badge" style="cursor:pointer;">
         Cargar JSON
         <input type="file" id="fileInput" accept=".json" style="display:none;">
@@ -465,6 +469,7 @@
     <div class="nav-tab" data-section="players">Jugadores</div>
     <div class="nav-tab" data-section="leaders">Lideres</div>
     <div class="nav-tab" data-section="matches">Partidos</div>
+    <div class="nav-tab" data-section="schedule">Calendario</div>
     <div class="nav-tab" data-section="compare">Comparar</div>
   </div>
 
@@ -671,6 +676,26 @@
       </div>
     </div>
 
+    <!-- ==================== SCHEDULE ==================== -->
+    <div class="section" id="sec-schedule">
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3>Calendario de Jornadas</h3>
+          <span style="color: var(--text-muted); font-size: 0.75rem;" id="scheduleInfo"></span>
+        </div>
+        <div class="card-body" style="padding: 0; overflow-x: auto;">
+          <table class="standings-table" id="scheduleTable">
+            <thead><tr>
+              <th class="num">Fecha</th>
+              <th>Dia</th>
+              <th class="num">Estado</th>
+            </tr></thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== COMPARE ==================== -->
     <div class="section" id="sec-compare">
       <div class="card fade-in">
@@ -700,25 +725,251 @@
     let charts = {};
     let currentSort = { key: 'pts', dir: -1 };
 
-    // Load sample data inline (will be replaced when JSON is loaded)
+    // Check if running from server (API available) or static file
+    const IS_SERVER = location.port && !location.protocol.startsWith('file');
+    let COMPETITIONS = [];
+
     async function loadData() {
-      try {
-        const resp = await fetch('./data/sample_data.json');
-        DATA = await resp.json();
-      } catch {
-        // Fallback: use inline minimal data if fetch fails
-        console.warn('Could not load sample_data.json, using inline fallback');
-        DATA = getInlineData();
+      if (IS_SERVER) {
+        await loadFromAPI();
+      } else {
+        await loadFromFile();
       }
+    }
+
+    // Load from server API
+    async function loadFromAPI() {
+      try {
+        // Load competitions list
+        const compResp = await fetch('/api/competitions');
+        const compData = await compResp.json();
+        COMPETITIONS = compData.competitions || [];
+        populateCompSelect();
+
+        // Load data for default/selected competition
+        const compSelect = document.getElementById('compSelect');
+        const compId = compSelect.value;
+        if (compId) {
+          await loadCompetitionData(compId);
+        } else if (COMPETITIONS.length > 0) {
+          const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+          compSelect.value = firstWithData.id;
+          await loadCompetitionData(firstWithData.id);
+        } else {
+          document.getElementById('dataSource').textContent = 'Sin datos - Ejecutar scraper';
+          DATA = getInlineData();
+          initDashboard();
+        }
+      } catch (err) {
+        console.warn('API not available, falling back to static file:', err.message);
+        await loadFromFile();
+      }
+    }
+
+    async function loadCompetitionData(compId, faseTag, grupoTag) {
+      try {
+        let url = `/api/data?comp=${compId}`;
+        if (faseTag && grupoTag) url += `&fase=${faseTag}&grupo=${grupoTag}`;
+        const resp = await fetch(url);
+        DATA = await resp.json();
+
+        if (DATA.error) {
+          document.getElementById('dataSource').textContent = DATA.error;
+          DATA = getInlineData();
+        } else {
+          const badge = document.getElementById('dataSource');
+          badge.textContent = `Datos: ${DATA.competition?.name || compId}`;
+          badge.style.borderColor = 'var(--win)';
+          badge.style.color = 'var(--win)';
+
+          // Populate fase/grupo selector
+          if (DATA.fases && DATA.fases.length > 0) {
+            populateFaseGrupoSelect(DATA.fases, faseTag, grupoTag);
+          }
+        }
+        initDashboard();
+      } catch (err) {
+        console.error('Error loading competition data:', err);
+        document.getElementById('dataSource').textContent = 'Error cargando datos';
+      }
+    }
+
+    function populateCompSelect() {
+      const select = document.getElementById('compSelect');
+      select.innerHTML = '';
+      if (COMPETITIONS.length === 0) {
+        select.innerHTML = '<option value="">Sin competiciones</option>';
+        return;
+      }
+      for (const c of COMPETITIONS) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name} - ${c.category}`.substring(0, 40);
+        if (!c.hasData) opt.textContent += ' (sin datos)';
+        select.appendChild(opt);
+      }
+    }
+
+    function populateFaseGrupoSelect(fases, currentFase, currentGrupo) {
+      const select = document.getElementById('faseGrupoSelect');
+      select.innerHTML = '';
+      for (const f of fases) {
+        const opt = document.createElement('option');
+        opt.value = `${f.faseTag}|${f.grupoTag}`;
+        opt.textContent = `${f.faseName} / ${f.grupoName}`.substring(0, 35);
+        if (currentFase === f.faseTag && currentGrupo === f.grupoTag) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    // Competition selector change
+    document.getElementById('compSelect').addEventListener('change', function() {
+      if (!this.value) return;
+      if (IS_SERVER) {
+        loadCompetitionData(this.value);
+      } else {
+        loadStaticCompetition(this.value);
+      }
+    });
+
+    // Fase/grupo selector change
+    document.getElementById('faseGrupoSelect').addEventListener('change', function() {
+      const compId = document.getElementById('compSelect').value;
+      const [faseTag, grupoTag] = this.value.split('|');
+      if (!compId || !faseTag || !grupoTag) return;
+      if (IS_SERVER) {
+        loadCompetitionData(compId, faseTag, grupoTag);
+      } else {
+        loadStaticCompetition(compId, faseTag, grupoTag);
+      }
+    });
+
+    // Scrape button
+    document.getElementById('btnScrape').addEventListener('click', async function() {
+      if (!IS_SERVER) { alert('El scraper solo funciona con server.js'); return; }
+      this.textContent = 'Scrapeando...';
+      this.disabled = true;
+      try {
+        await fetch('/api/scrape', { method: 'POST' });
+        // Poll status
+        const poll = setInterval(async () => {
+          const r = await fetch('/api/scrape/status');
+          const s = await r.json();
+          if (!s.running) {
+            clearInterval(poll);
+            this.textContent = 'Actualizar datos';
+            this.disabled = false;
+            await loadFromAPI();
+          }
+        }, 5000);
+      } catch (err) {
+        this.textContent = 'Error';
+        this.disabled = false;
+      }
+    });
+
+    // All static data loaded from dashboard_data.json
+    let STATIC_DATA = null;
+
+    // Load from static file (fallback)
+    async function loadFromFile() {
+      try {
+        const resp = await fetch('./data/dashboard_data.json');
+        if (!resp.ok) throw new Error('Not found');
+        STATIC_DATA = await resp.json();
+      } catch {
+        console.warn('Could not load dashboard_data.json, using inline fallback');
+        STATIC_DATA = null;
+        DATA = getInlineData();
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        initDashboard();
+        return;
+      }
+
+      // Populate competitions from static data
+      COMPETITIONS = (STATIC_DATA.competitions || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        delegacion: c.delegacion,
+        hasData: c.fases && c.fases.some(f => f.hasData),
+      }));
+      populateCompSelect();
+
+      // Load first competition with data
+      const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+      if (firstWithData) {
+        document.getElementById('compSelect').value = firstWithData.id;
+        loadStaticCompetition(firstWithData.id);
+      } else {
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        DATA = getInlineData();
+        initDashboard();
+      }
+    }
+
+    function loadStaticCompetition(compId, faseTag, grupoTag) {
+      if (!STATIC_DATA) return;
+      const comp = STATIC_DATA.competitions.find(c => String(c.id) === String(compId));
+      if (!comp || !comp.fases || comp.fases.length === 0) {
+        DATA = getInlineData();
+        DATA.competition = { name: comp?.name || '', category: comp?.category || '', season: '2026' };
+        document.getElementById('dataSource').textContent = `${comp?.name || 'Sin datos'} (sin datos)`;
+        initDashboard();
+        return;
+      }
+
+      // Find the requested fase/grupo or use first one
+      let fase = comp.fases[0];
+      if (faseTag && grupoTag) {
+        const found = comp.fases.find(f => f.faseTag === faseTag && f.grupoTag === grupoTag);
+        if (found) fase = found;
+      }
+
+      // Build DATA in the same format the dashboard expects
+      DATA = {
+        meta: STATIC_DATA.meta,
+        competition: {
+          id: comp.id,
+          name: comp.name,
+          category: comp.category,
+          season: comp.season || '2026',
+          delegacion: comp.delegacion,
+          fase: fase.faseName,
+          grupo: fase.grupoName,
+          tipoFase: fase.tipoFase,
+        },
+        standings: fase.standings || [],
+        matches: fase.matches || [],
+        schedule: fase.schedule || [],
+        players: [],
+        teamColors: {},
+        fases: comp.fases.map(f => ({
+          faseName: f.faseName,
+          grupoName: f.grupoName,
+          tipoFase: f.tipoFase,
+          faseTag: f.faseTag,
+          grupoTag: f.grupoTag,
+          hasClasificacion: f.standings && f.standings.length > 0,
+          hasJornadas: f.schedule && f.schedule.length > 0,
+        })),
+      };
+
+      populateFaseGrupoSelect(DATA.fases, fase.faseTag, fase.grupoTag);
+      const badge = document.getElementById('dataSource');
+      badge.textContent = `Datos: ${comp.name}`;
+      badge.style.borderColor = 'var(--win)';
+      badge.style.color = 'var(--win)';
       initDashboard();
     }
 
     function getInlineData() {
       return {
-        competition: { name: "FEBAMBA 2025", category: "Primera Division", season: "2025" },
+        competition: { name: "FEBAMBA 2026", category: "Primera Division", season: "2026" },
         standings: [],
         players: [],
         matches: [],
+        schedule: [],
         teamColors: {}
       };
     }
@@ -731,35 +982,33 @@
       reader.onload = function(ev) {
         try {
           const loaded = JSON.parse(ev.target.result);
-          // Support both scraped_data.json format and sample_data.json format
-          if (loaded.standings || loaded.players) {
+          if (loaded.competitions) {
+            // Multi-competition format (dashboard_data.json)
+            STATIC_DATA = loaded;
+            COMPETITIONS = (loaded.competitions || []).map(c => ({
+              id: c.id, name: c.name, category: c.category, delegacion: c.delegacion,
+              hasData: c.fases && c.fases.some(f => f.hasData),
+            }));
+            populateCompSelect();
+            const first = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+            if (first) {
+              document.getElementById('compSelect').value = first.id;
+              loadStaticCompetition(first.id);
+            }
+          } else if (loaded.standings || loaded.matches) {
+            // Single competition format
             DATA = loaded;
-          } else if (loaded.competitions) {
-            // Convert scraped format
-            DATA = convertScrapedData(loaded);
+            initDashboard();
           }
-          document.getElementById('dataSource').textContent = 'Datos cargados: ' + file.name;
+          document.getElementById('dataSource').textContent = 'Cargado: ' + file.name;
           document.getElementById('dataSource').style.borderColor = 'var(--win)';
           document.getElementById('dataSource').style.color = 'var(--win)';
-          initDashboard();
         } catch (err) {
           alert('Error parsing JSON: ' + err.message);
         }
       };
       reader.readAsText(file);
     });
-
-    function convertScrapedData(scraped) {
-      // Convert scraped_data.json from scraper.js into dashboard format
-      // This is a placeholder - actual conversion depends on scraped HTML structure
-      return {
-        competition: { name: "Datos Scrapeados", category: "", season: "" },
-        standings: [],
-        players: [],
-        matches: [],
-        teamColors: {}
-      };
-    }
 
     // ========================================
     // INIT
@@ -771,6 +1020,7 @@
       renderPlayers();
       renderLeaders();
       renderMatches();
+      renderSchedule();
       renderCompare();
     }
 
@@ -794,18 +1044,25 @@
       const s = DATA.standings || [];
       const p = DATA.players || [];
       const m = DATA.matches || [];
+      const sched = DATA.schedule || [];
 
-      document.getElementById('statTeams').textContent = s.length;
+      // Count unique teams from matches
+      const teamSet = new Set();
+      m.forEach(x => { if (x.home) teamSet.add(x.home); if (x.away) teamSet.add(x.away); });
+      const teamCount = s.length || teamSet.size || '-';
+
+      document.getElementById('statTeams').textContent = teamCount;
       document.getElementById('statCompetition').textContent = DATA.competition?.name || '';
-      document.getElementById('statMatches').textContent = m.length;
+      document.getElementById('statMatches').textContent = m.length || (sched.length ? sched.length + ' jornadas' : '-');
 
       const matchdays = [...new Set(m.map(x => x.matchday))];
-      document.getElementById('statMatchdays').textContent = matchdays.length + ' fechas';
+      document.getElementById('statMatchdays').textContent = m.length ? matchdays.length + ' fechas' : (sched.length ? 'programadas' : '-');
 
-      const totalPts = m.reduce((sum, x) => sum + (x.homeScore || 0) + (x.awayScore || 0), 0);
-      document.getElementById('statAvgPts').textContent = m.length ? (totalPts / m.length).toFixed(1) : '-';
+      const playedMatches = m.filter(x => x.homeScore && x.homeScore !== '-' && x.homeScore !== null);
+      const totalPts = playedMatches.reduce((sum, x) => sum + (Number(x.homeScore) || 0) + (Number(x.awayScore) || 0), 0);
+      document.getElementById('statAvgPts').textContent = playedMatches.length ? (totalPts / playedMatches.length).toFixed(1) : '-';
 
-      const topScorer = p.sort((a, b) => b.pts - a.pts)[0];
+      const topScorer = [...p].sort((a, b) => b.pts - a.pts)[0];
       if (topScorer) {
         document.getElementById('statTopScorer').textContent = topScorer.pts.toFixed(1) + ' ppg';
         document.getElementById('statTopScorerTeam').textContent = topScorer.name;
@@ -827,23 +1084,37 @@
       standingsHtml += '</tbody></table>';
       document.getElementById('miniStandings').innerHTML = standingsHtml;
 
-      // Recent matches
+      // Recent/upcoming matches
       let matchesHtml = '';
-      m.slice(0, 6).forEach(match => {
-        const homeWin = match.homeScore > match.awayScore;
-        matchesHtml += `<div class="match-card">
-          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
-          <div class="match-teams">
-            <div class="match-team home">${shortTeamName(match.home)}</div>
-            <div class="match-score">
-              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
-              <span style="color:var(--text-muted)">-</span>
-              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
+      if (m.length > 0) {
+        // Show first upcoming or most recent matches
+        const sorted = [...m].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+        sorted.slice(0, 6).forEach(match => {
+          const hasScore = match.homeScore && match.homeScore !== '-' && match.homeScore !== null;
+          const homeWin = hasScore && Number(match.homeScore) > Number(match.awayScore);
+          const awayWin = hasScore && Number(match.awayScore) > Number(match.homeScore);
+          const timeStr = match.time ? match.time.substring(0, 5) : '';
+          matchesHtml += `<div class="match-card">
+            <div class="match-date">
+              <div class="match-day">Fecha ${match.matchday}</div>
+              ${match.date || ''}${timeStr ? ' ' + timeStr : ''}
             </div>
-            <div class="match-team away">${shortTeamName(match.away)}</div>
-          </div>
-        </div>`;
-      });
+            <div class="match-teams">
+              <div class="match-team home" style="font-weight:${homeWin ? '700' : '400'}">${shortTeamName(match.home)}</div>
+              <div class="match-score">
+                ${hasScore
+                  ? `<span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
+                     <span style="color:var(--text-muted)">-</span>
+                     <span class="${awayWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>`
+                  : `<span style="color:var(--text-muted)">vs</span>`}
+              </div>
+              <div class="match-team away" style="font-weight:${awayWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
+            </div>
+          </div>`;
+        });
+      } else {
+        matchesHtml = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de partidos</div>';
+      }
       document.getElementById('recentMatches').innerHTML = matchesHtml;
 
       // Charts
@@ -1119,17 +1390,25 @@
       const m = DATA.matches || [];
 
       // Populate matchday filter
-      const matchdays = [...new Set(m.map(x => x.matchday))].sort((a, b) => b - a);
+      const matchdays = [...new Set(m.map(x => x.matchday))].sort((a, b) => a - b);
       const sel = document.getElementById('matchdayFilter');
       sel.innerHTML = '<option value="">Todas las fechas</option>';
       matchdays.forEach(md => {
         sel.innerHTML += `<option value="${md}">Fecha ${md}</option>`;
       });
 
+      // Populate team filter from matches
+      const teamFilter = document.getElementById('matchTeamFilter');
+      const teams = [...new Set([...m.map(x => x.home), ...m.map(x => x.away)])].filter(Boolean).sort();
+      teamFilter.innerHTML = '<option value="">Todos los equipos</option>';
+      teams.forEach(t => {
+        teamFilter.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
+      });
+
       renderMatchList();
 
-      document.getElementById('matchTeamFilter').addEventListener('change', renderMatchList);
-      document.getElementById('matchdayFilter').addEventListener('change', renderMatchList);
+      teamFilter.addEventListener('change', renderMatchList);
+      sel.addEventListener('change', renderMatchList);
 
       renderMatchScoresChart();
     }
@@ -1142,22 +1421,34 @@
       if (team) m = m.filter(x => x.home === team || x.away === team);
       if (md) m = m.filter(x => x.matchday == md);
 
-      m.sort((a, b) => b.matchday - a.matchday || b.date?.localeCompare(a.date));
+      m.sort((a, b) => a.matchday - b.matchday || (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
 
       let html = '';
       m.forEach(match => {
-        const homeWin = match.homeScore > match.awayScore;
+        const hasScore = match.homeScore && match.homeScore !== '-' && match.homeScore !== null;
+        const homeWin = hasScore && Number(match.homeScore) > Number(match.awayScore);
+        const awayWin = hasScore && Number(match.awayScore) > Number(match.homeScore);
+        const statusColor = match.status === 'Finalizado' ? 'var(--win)' : match.status === 'No comenzado' ? 'var(--text-muted)' : 'var(--accent)';
+        const timeStr = match.time ? match.time.substring(0, 5) : '';
+
         html += `<div class="match-card">
-          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
+          <div class="match-date">
+            <div class="match-day">Fecha ${match.matchday}</div>
+            ${match.date || ''}${timeStr ? ' - ' + timeStr : ''}
+            <div style="font-size:0.7rem;color:${statusColor}">${match.status || ''}</div>
+          </div>
           <div class="match-teams">
             <div class="match-team home" style="font-weight:${homeWin ? '700' : '400'}">${shortTeamName(match.home)}</div>
             <div class="match-score">
-              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
-              <span style="color:var(--text-muted)">-</span>
-              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
+              ${hasScore
+                ? `<span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
+                   <span style="color:var(--text-muted)">-</span>
+                   <span class="${awayWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>`
+                : `<span style="color:var(--text-muted)">vs</span>`}
             </div>
-            <div class="match-team away" style="font-weight:${!homeWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
+            <div class="match-team away" style="font-weight:${awayWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
           </div>
+          ${match.venue ? `<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;width:100%;padding:0.2rem 0 0;">${match.venue}</div>` : ''}
         </div>`;
       });
 
@@ -1199,6 +1490,46 @@
         },
         options: chartOptions('Puntos combinados por partido')
       });
+    }
+
+    // ========================================
+    // SCHEDULE
+    // ========================================
+    function renderSchedule() {
+      const schedule = DATA.schedule || [];
+      const info = document.getElementById('scheduleInfo');
+      const body = document.getElementById('scheduleBody');
+
+      if (!schedule.length) {
+        if (info) info.textContent = 'Sin calendario disponible';
+        if (body) body.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-muted);">No hay jornadas programadas</td></tr>';
+        return;
+      }
+
+      if (info) {
+        const comp = DATA.competition || {};
+        info.textContent = `${comp.fase || ''} / ${comp.grupo || ''} - ${schedule.length} jornadas`;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      let html = '';
+      for (const s of schedule) {
+        const date = s.date || '';
+        const d = new Date(date + 'T12:00:00');
+        const dayName = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
+        const isPast = date < today;
+        const isToday = date === today;
+        const statusClass = isToday ? 'style="color:var(--accent);font-weight:bold;"' : isPast ? 'style="color:var(--text-muted);"' : '';
+        const statusText = isToday ? 'HOY' : isPast ? 'Pasada' : 'Programada';
+        const statusBadge = isToday ? 'color:var(--accent);border-color:var(--accent);' : isPast ? '' : 'color:var(--win);border-color:var(--win);';
+
+        html += `<tr ${statusClass}>
+          <td class="num"><strong>Fecha ${s.matchday}</strong></td>
+          <td>${dayName}</td>
+          <td class="num"><span class="data-badge" style="font-size:0.7rem;${statusBadge}">${statusText}</span></td>
+        </tr>`;
+      }
+      if (body) body.innerHTML = html;
     }
 
     // ========================================

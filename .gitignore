@@ -9,4 +9,12 @@ data/scraped_data.json
 data/scrape_summary.json
 page_*.html
 apk_analysis/
+apk_extract/
 cabb.apk
+analyze_apk*.js
+test_fasesgrupos.js
+test_scraper_quick.js
+data/test_*.json
+data/debug_*.json
+data/.session.json
+test_*.js

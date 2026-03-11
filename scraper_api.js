@@ -88,6 +88,10 @@ function saveSession() {
 /**
  * Hacer una llamada POST con application/x-www-form-urlencoded;charset=UTF-8
  * Replica exactamente el método GetJSON del APK (Angular HttpClient.post)
+ *
+ * IMPORTANTE: Después de cada respuesta exitosa, actualiza SESSION.key
+ * replicando la función UltimaActualizacion() del APK, que guarda la nueva
+ * key en sessionStorage con cada respuesta del servidor.
  */
 async function postAPI(url, params) {
   const body = new URLSearchParams(params).toString();
@@ -113,12 +117,31 @@ async function postAPI(url, params) {
   }
 
   const text = await response.text();
+  let data;
   try {
-    return JSON.parse(text);
+    data = JSON.parse(text);
   } catch {
     console.log(`  Respuesta no-JSON (${text.length} chars): ${text.substring(0, 200)}`);
     return { _raw: text };
   }
+
+  // Replicar UltimaActualizacion() del APK:
+  // La app actualiza key, id_dispositivo y ruta con CADA respuesta exitosa
+  if (data && data.resultado === 'correcto') {
+    if (data.key) {
+      SESSION.key = data.key;
+    }
+    if (data.id_dispositivo && data.id_dispositivo !== '') {
+      SESSION.id_dispositivo = data.id_dispositivo;
+    }
+    if (data.ruta) {
+      SESSION.ruta = data.ruta;
+      const base = data.ruta.endsWith('/') ? data.ruta : data.ruta + '/';
+      BASE_URL_DYNAMIC = base + 'v2';
+    }
+  }
+
+  return data;
 }
 
 /**
@@ -306,9 +329,10 @@ async function apiCall(endpoint, params = {}, baseUrl = null) {
   try {
     const data = await postAPI(url, params);
 
-    // Detect expired/invalid session: server returns resultado=error with empty id_dispositivo/key
+    // Detect expired/invalid session: only for explicit session errors
+    // "Error en la consulta" is a server-side data error, NOT a session error
     const sessionExpired = data && data.resultado === 'error' &&
-      (data.error === 'Sesión caducada' || (data.id_dispositivo === '' && data.key === ''));
+      (data.error === 'Sesión caducada' || data.error === 'Sesion caducada');
 
     if (sessionExpired) {
       console.log('  Sesión inválida/caducada, renovando key...');
@@ -384,13 +408,12 @@ async function getJornadas(idFase, idGrupo, idRonda) {
   return data;
 }
 
-async function getPartidos(idCategoriaCompeticion, idFase, idGrupo) {
-  console.log(`\n--- Obteniendo partidos ---`);
-  const data = await apiCall('partidos.ashx', {
-    accion: 'partidos',
-    id_categoria_competicion: idCategoriaCompeticion,
-    id_fase: idFase,
-    id_grupo: idGrupo,
+async function getHorariosJornadas(idFase, idGrupo) {
+  console.log(`\n--- Obteniendo horariosJornadas (fase=${idFase}, grupo=${idGrupo}) ---`);
+  const data = await apiCall('categoria.ashx', {
+    accion: 'horariosJornadas',
+    id_fase: idFase || '',
+    id_grupo: idGrupo || '',
   });
   return data;
 }
@@ -466,39 +489,31 @@ async function buscar(tipo, texto) {
 }
 
 /**
- * Decodifica un Id hex-encoded (UTF-16LE) al string original.
- * Ejemplo: "66006D007A00..." → "fmzE1QZBjnAd965Z677JkA=="
- * La API de Indalweb usa estos IDs codificados como id_categoria_competicion.
+ * NOTA: Los IDs de la API (id_categoria_competicion, IdFase, IdGrupo, etc.)
+ * son strings hex-encoded UTF-16LE (ej: "66006D007A00...").
+ * Estos IDs deben enviarse TAL CUAL a la API, sin decodificar.
+ * La función decodeHexId anterior los decodificaba a base64, lo cual era incorrecto
+ * y causaba que fasesGrupos devolviera datos vacíos.
  */
-function decodeHexId(hexId) {
-  let decoded = '';
-  for (let i = 0; i < hexId.length; i += 4) {
-    const charCode = parseInt(hexId.substring(i, i + 2), 16);
-    if (charCode > 0) decoded += String.fromCharCode(charCode);
-  }
-  return decoded;
-}
 
 /**
  * Procesa una competición: obtiene fases/grupos, clasificación, partidos y estadísticas.
  */
 async function scrapeCompeticion(comp) {
-  // La API requiere el Id codificado (string hex → decoded), NO el numérico
-  const compIdEncoded = comp.Id; // hex-encoded UTF-16LE string
-  const compIdDecoded = decodeHexId(compIdEncoded); // e.g. "fmzE1QZBjnAd965Z677JkA=="
+  // La API requiere el Id hex-encoded RAW, NO decodificado ni el numérico
+  const compId = comp.Id; // hex-encoded UTF-16LE string - enviar TAL CUAL
   const compIdNumeric = comp.IdCompeticionCategoria; // numeric, for filenames only
   const compName = `${comp.NombreCompeticion} - ${comp.NombreCategoria}`;
-  const compIdSafe = String(compIdNumeric || compIdDecoded).replace(/[^a-zA-Z0-9]/g, '_');
+  const compIdSafe = String(compIdNumeric).replace(/[^a-zA-Z0-9]/g, '_');
 
-  console.log(`  Id encoded: ${compIdEncoded?.substring(0, 40)}...`);
-  console.log(`  Id decoded: ${compIdDecoded}`);
+  console.log(`  Id hex: ${compId?.substring(0, 40)}...`);
 
   console.log(`\n========================================`);
   console.log(`  Competición: ${compName} (id=${compIdNumeric})`);
   console.log(`========================================`);
 
-  // 1. Obtener fases y grupos
-  const fasesGrupos = await getFasesGrupos(compIdDecoded);
+  // 1. Obtener fases y grupos (enviar hex Id raw, NO decodificado)
+  const fasesGrupos = await getFasesGrupos(compId);
   await sleep(DELAY_MS);
 
   if (!fasesGrupos) {
@@ -509,12 +524,13 @@ async function scrapeCompeticion(comp) {
   saveData(`fases_grupos_${compIdSafe}.json`, fasesGrupos);
 
   // La respuesta de fasesGrupos tiene: { faseActual, grupoActual, listaFasesGrupo: [...] }
-  // Cada elemento de listaFasesGrupo tiene: { IdFase, NombreFase, ListaGrupos: [{IdGrupo, NombreGrupo}] }
+  // Cada elemento de listaFasesGrupo tiene:
+  //   { IdFase (hex), NombreFase, TipoFase, Grupos: [{IdGrupo (hex), NombreGrupo}], Rondas: [] }
+  // NOTA: Los IdFase, IdGrupo son hex-encoded como el Id de competición
   const listaFases = fasesGrupos.listaFasesGrupo || [];
   const faseActual = fasesGrupos.faseActual;
   const grupoActual = fasesGrupos.grupoActual;
   const rondaActual = fasesGrupos.rondaActual || '';
-  const tipoFase = fasesGrupos.tipoFase || '';
 
   // Construir lista de combinaciones fase/grupo a scrapear
   const fasesGruposToScrape = [];
@@ -524,67 +540,95 @@ async function scrapeCompeticion(comp) {
     for (const fase of listaFases) {
       const faseId = fase.IdFase || fase.Id;
       const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
-      const grupos = fase.ListaGrupos || fase.Grupos || [];
+      // TipoFase viene dentro de cada fase (ej: "LIGA"), no en el top-level
+      const tipoFase = fase.TipoFase || fase.tipoFase || '';
+      const grupos = fase.Grupos || fase.ListaGrupos || [];
       if (grupos.length > 0) {
         for (const grupo of grupos) {
           fasesGruposToScrape.push({
-            faseId, faseName,
+            faseId, faseName, tipoFase,
             grupoId: grupo.IdGrupo || grupo.Id,
             grupoName: grupo.NombreGrupo || grupo.Nombre || 'Default',
           });
         }
       } else {
         // Fase sin grupos explícitos
-        fasesGruposToScrape.push({ faseId, faseName, grupoId: '', grupoName: 'Único' });
+        fasesGruposToScrape.push({ faseId, faseName, tipoFase, grupoId: '', grupoName: 'Único' });
       }
     }
   } else if (faseActual) {
     // No hay lista pero hay faseActual/grupoActual del servidor
     fasesGruposToScrape.push({
       faseId: faseActual, faseName: `Fase ${faseActual}`,
+      tipoFase: fasesGrupos.tipoFase || '',
       grupoId: grupoActual || '', grupoName: grupoActual ? `Grupo ${grupoActual}` : 'Único',
     });
   } else {
     // Sin fases ni grupos - intentar con valores vacíos
     console.log('  Sin fases/grupos configurados, intentando con params vacíos...');
-    fasesGruposToScrape.push({ faseId: '', faseName: 'Default', grupoId: '', grupoName: 'Default' });
+    fasesGruposToScrape.push({ faseId: '', faseName: 'Default', tipoFase: '', grupoId: '', grupoName: 'Default' });
   }
 
   console.log(`  Combinaciones fase/grupo a scrapear: ${fasesGruposToScrape.length}`);
 
   const results = { competicion: compName, compId: compIdNumeric, fases: [] };
 
-  for (const { faseId, faseName, grupoId, grupoName } of fasesGruposToScrape) {
-      console.log(`\n  Fase: ${faseName} (id=${faseId})`);
-      console.log(`    Grupo: ${grupoName} (id=${grupoId})`);
+  let fgIdx = 0;
+  for (const { faseId, faseName, tipoFase, grupoId, grupoName } of fasesGruposToScrape) {
+      fgIdx++;
+      // Usar nombre legible para archivos (los hex ids son demasiado largos)
+      const faseTag = faseName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+      const grupoTag = grupoName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+      const fileTag = `${compIdSafe}_${faseTag}_${grupoTag}`;
 
-      // 2. Jornadas first (APK calls Jornadas before clasificacion)
-      // Note: accion='Jornadas' (capital J!) per APK deobfuscation
+      console.log(`\n  [${fgIdx}/${fasesGruposToScrape.length}] Fase: ${faseName}`);
+      console.log(`    Grupo: ${grupoName} (tipo_fase=${tipoFase})`);
+
+      // 2. horariosJornadas - gets ALL matches with full details (teams, dates, venues)
+      // Requires id_fase + id_grupo (discovered from APK string table)
+      const horarios = await getHorariosJornadas(faseId, grupoId);
+      if (horarios && horarios.resultado !== 'error') {
+        saveData(`horarios_${fileTag}.json`, horarios);
+        const numPartidos = horarios.partidos ? horarios.partidos.length : 0;
+        console.log(`    Horarios OK: ${numPartidos} partidos`);
+      } else {
+        console.log(`    Horarios: sin datos o error`, horarios ? JSON.stringify(horarios).substring(0, 200) : 'null');
+      }
+      await sleep(DELAY_MS);
+
+      // 3. Jornadas (list of matchday dates/IDs)
       const jornadas = await getJornadas(faseId, grupoId, rondaActual);
       if (jornadas && jornadas.resultado !== 'error') {
-        saveData(`jornadas_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, jornadas);
+        saveData(`jornadas_${fileTag}.json`, jornadas);
         console.log(`    Jornadas OK: resultado=${jornadas.resultado}`);
       } else {
         console.log(`    Jornadas: sin datos o error`, jornadas ? JSON.stringify(jornadas).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
-      // 3. Clasificación (standings) - APK sends after Jornadas
-      // Uses id_grupo, tipo_fase, jornada, ventana (NOT id_categoria_competicion/id_fase)
+      // 4. Clasificación (standings) - may be empty until matches are played
       const clasificacion = await getClasificacion(grupoId, tipoFase, '', '');
       if (clasificacion && clasificacion.resultado !== 'error') {
-        saveData(`clasificacion_${compIdSafe}_${faseId || 'default'}_${grupoId || 'default'}.json`, clasificacion);
+        saveData(`clasificacion_${fileTag}.json`, clasificacion);
         console.log(`    Clasificación OK: resultado=${clasificacion.resultado}`);
       } else {
-        console.log(`    Clasificación: sin datos o error`, clasificacion ? JSON.stringify(clasificacion).substring(0, 200) : 'null');
+        console.log(`    Clasificación: sin datos o error (normal if season not started)`);
       }
       await sleep(DELAY_MS);
 
-      // 4. Equipos y jugadores (desde clasificación o partidos)
+      // 5. Extract team IDs from horarios partidos (more reliable than clasificacion)
       const equipoIds = new Set();
 
-      // Extraer IDs de equipo de la clasificación
-      if (clasificacion) {
+      // From horarios (match schedules with team names)
+      if (horarios && horarios.partidos) {
+        for (const p of horarios.partidos) {
+          // horariosJornadas doesn't include IdEquipoLocal/Visitante hex IDs
+          // but the team names are available for the dashboard
+        }
+      }
+
+      // From clasificacion (if available)
+      if (clasificacion && clasificacion.resultado === 'correcto') {
         const clasifData = clasificacion.datos || clasificacion.clasificacion || clasificacion;
         const equipos = Array.isArray(clasifData) ? clasifData :
           clasifData.ListaClasificacion || clasifData.Clasificacion || [];
@@ -594,7 +638,7 @@ async function scrapeCompeticion(comp) {
         }
       }
 
-      // Extraer IDs de equipo de las jornadas (partidos local y visitante)
+      // From jornadas (if they contain embedded partidos)
       if (jornadas) {
         const listaP = extractPartidos(jornadas);
         for (const p of listaP) {
@@ -614,7 +658,7 @@ async function scrapeCompeticion(comp) {
         await sleep(DELAY_MS);
 
         // Obtener jugadores del equipo
-        const jugadores = await getJugadores(eqId, compIdDecoded);
+        const jugadores = await getJugadores(eqId, compId);
         if (jugadores && jugadores.resultado !== 'error') {
           saveData(`jugadores_${eqId}_${compIdSafe}.json`, jugadores);
         }
@@ -646,7 +690,7 @@ async function scrapeCompeticion(comp) {
         }
       }
 
-      results.fases.push({ faseId, faseName, grupoId, grupoName, clasificacion, jornadas });
+      results.fases.push({ faseId, faseName, tipoFase, grupoId, grupoName, clasificacion, jornadas });
   }
 
   return results;
