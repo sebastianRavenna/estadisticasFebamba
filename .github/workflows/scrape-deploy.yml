@@ -50,7 +50,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/dashboard_data.json data/busqueda_buenos_aires.json data/fases_grupos_*.json
+          git add data/dashboard_data.json data/db.json data/busqueda_buenos_aires.json data/fases_grupos_*.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "Update dashboard data $(date -u +%Y-%m-%d)" && \
             git push
