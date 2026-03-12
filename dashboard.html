@@ -467,6 +467,7 @@
     <div class="nav-tab active" data-section="overview">Resumen</div>
     <div class="nav-tab" data-section="standings">Posiciones</div>
     <div class="nav-tab" data-section="matches">Partidos</div>
+    <div class="nav-tab" data-section="stats">Estadisticas</div>
     <div class="nav-tab" data-section="teams">Equipos</div>
     <div class="nav-tab" data-section="compare">Comparar</div>
     <div class="nav-tab" data-section="schedule">Calendario</div>
@@ -555,6 +556,50 @@
           <div class="card-header"><h3>% Victorias</h3></div>
           <div class="card-body">
             <div class="chart-container"><canvas id="chartWinPct"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== STATS ==================== -->
+    <div class="section" id="sec-stats">
+      <div class="filters fade-in">
+        <select class="filter-select" id="statsView">
+          <option value="topPlayers">Mejores Jugadores</option>
+          <option value="boxScores">Box Scores (por partido)</option>
+        </select>
+        <select class="filter-select" id="statsCategory">
+          <option value="valoracion">Valoracion</option>
+          <option value="puntos">Puntos</option>
+          <option value="rebotes">Rebotes</option>
+          <option value="asistencias">Asistencias</option>
+        </select>
+        <select class="filter-select" id="boxScoreMatch" style="display:none;">
+          <option value="">Seleccionar partido...</option>
+        </select>
+      </div>
+
+      <!-- Top Players -->
+      <div id="statsTopPlayers" class="fade-in">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="topPlayersTitle">Mejores Jugadores</h3>
+            <span style="color: var(--text-muted); font-size: 0.75rem;" id="topPlayersCount"></span>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="topPlayersList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box Scores -->
+      <div id="statsBoxScores" class="fade-in" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="boxScoreTitle">Box Score</h3>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="boxScoreContent"></div>
           </div>
         </div>
       </div>
@@ -889,6 +934,9 @@
         standings: fase.standings || [],
         matches: fase.matches || [],
         schedule: fase.schedule || [],
+        matchStats: fase.matchStats || [],
+        topPlayers: fase.topPlayers || null,
+        teamStats: fase.teamStats || [],
         players: [],
         teamColors: {},
         fases: comp.fases.map(f => ({
@@ -917,6 +965,9 @@
         players: [],
         matches: [],
         schedule: [],
+        matchStats: [],
+        topPlayers: null,
+        teamStats: [],
         teamColors: {}
       };
     }
@@ -966,6 +1017,7 @@
       renderStandings();
       renderTeams();
       renderMatches();
+      renderStats();
       renderSchedule();
       renderCompare();
     }
@@ -1468,6 +1520,174 @@
 
       html += '</tbody></table>';
       document.getElementById('compareStats').innerHTML = html;
+    }
+
+    // ========================================
+    // STATS (Top Players + Box Scores)
+    // ========================================
+    function renderStats() {
+      const topPlayers = DATA.topPlayers;
+      const matchStats = DATA.matchStats || [];
+
+      // Wire up view toggle
+      const viewSelect = document.getElementById('statsView');
+      const catSelect = document.getElementById('statsCategory');
+      const matchSelect = document.getElementById('boxScoreMatch');
+
+      viewSelect.onchange = () => {
+        const isBox = viewSelect.value === 'boxScores';
+        document.getElementById('statsTopPlayers').style.display = isBox ? 'none' : '';
+        document.getElementById('statsBoxScores').style.display = isBox ? '' : 'none';
+        catSelect.style.display = isBox ? 'none' : '';
+        matchSelect.style.display = isBox ? '' : 'none';
+        if (isBox) renderBoxScore();
+      };
+      catSelect.onchange = () => renderTopPlayers();
+
+      // Populate box score match selector
+      matchSelect.innerHTML = '<option value="">Seleccionar partido...</option>';
+      matchStats.forEach((ms, idx) => {
+        const label = `${ms.home || '?'} vs ${ms.away || '?'} (${ms.date || ''})`;
+        matchSelect.innerHTML += `<option value="${idx}">${label}</option>`;
+      });
+      matchSelect.onchange = () => renderBoxScore();
+
+      renderTopPlayers();
+    }
+
+    function renderTopPlayers() {
+      const topPlayers = DATA.topPlayers;
+      const container = document.getElementById('topPlayersList');
+      const countEl = document.getElementById('topPlayersCount');
+      const category = document.getElementById('statsCategory').value;
+
+      if (!topPlayers) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de mejores jugadores para este grupo. Ejecuta el scraper completo (scraper_api.js) para obtener estadísticas de partidos.</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      const categoryLabels = {
+        valoracion: 'Valoración',
+        puntos: 'Puntos',
+        rebotes: 'Rebotes',
+        asistencias: 'Asistencias',
+      };
+      const label = categoryLabels[category] || 'Valoración';
+      document.getElementById('topPlayersTitle').textContent = `Mejores Jugadores - ${label}`;
+
+      // topPlayers format: { puntos: [{name, team, pj, total, avg}], rebotes: [...], ... }
+      const players = topPlayers[category] || [];
+
+      if (!players.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de ' + label + '</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      countEl.textContent = `${players.length} jugadores`;
+
+      let html = '<table class="player-table"><thead><tr>';
+      html += '<th class="left">#</th><th class="left">Jugador</th><th class="left">Equipo</th>';
+      html += '<th>Prom</th><th>Total</th><th>PJ</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach((p, idx) => {
+        const rankClass = idx < 3 ? `leader-rank r${idx + 1}` : '';
+        html += `<tr${idx < 3 ? ' class="highlight"' : ''}>
+          <td class="left"><span class="${rankClass}" style="display:inline-block;width:24px;text-align:center;">${idx + 1}</span></td>
+          <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+          <td class="left"><span class="player-team">${shortTeamName(p.team || '')}</span></td>
+          <td><strong style="color:var(--accent)">${p.avg}</strong></td>
+          <td>${p.total}</td>
+          <td>${p.pj}</td>
+        </tr>`;
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function renderBoxScore() {
+      const matchStats = DATA.matchStats || [];
+      const container = document.getElementById('boxScoreContent');
+      const matchIdx = document.getElementById('boxScoreMatch').value;
+
+      if (!matchStats.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin box scores disponibles. Ejecuta el scraper completo (scraper_api.js) para obtener estadísticas de partidos.</div>';
+        return;
+      }
+
+      if (matchIdx === '') {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Selecciona un partido para ver el box score</div>';
+        return;
+      }
+
+      const ms = matchStats[Number(matchIdx)];
+      if (!ms) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Datos no disponibles</div>';
+        return;
+      }
+
+      // Score header
+      const scoreHdr = (ms.scoreHome != null && ms.scoreAway != null)
+        ? ` — ${ms.scoreHome} : ${ms.scoreAway}` : '';
+      document.getElementById('boxScoreTitle').textContent = `${ms.home || '?'} vs ${ms.away || '?'}${scoreHdr}`;
+
+      // Periods summary
+      let periodsHtml = '';
+      if (ms.periods && ms.periods.length) {
+        periodsHtml = '<div style="padding:0.5rem 1rem;font-size:0.85rem;color:var(--text-muted);">Parciales: ' +
+          ms.periods.map(p => `${p.tanteo_periodo_local}-${p.tanteo_periodo_visitante}`).join(' | ') + '</div>';
+      }
+
+      // New format: homePlayers and awayPlayers are arrays of {name, dorsal, starter, pts, t2, t3, tl, reb, ast, val, min, ...}
+      const homePlayers = ms.homePlayers || [];
+      const awayPlayers = ms.awayPlayers || [];
+
+      let html = periodsHtml;
+
+      const renderTeamTable = (players, teamName, score) => {
+        if (!players.length) return `<div style="padding:1rem;color:var(--text-muted);">Sin datos de jugadores para ${teamName}</div>`;
+
+        const scoreStr = score != null ? ` (${score})` : '';
+        let t = `<div style="padding:0.8rem 1rem;background:var(--bg-hover);font-weight:700;color:var(--accent);">${teamName}${scoreStr}</div>`;
+        t += '<div style="overflow-x:auto;"><table class="player-table"><thead><tr>';
+        t += '<th class="left">Nro</th><th class="left">Jugador</th>';
+        t += '<th>MIN</th><th>PTS</th><th>T2</th><th>T3</th><th>TL</th>';
+        t += '<th>REB</th><th>AST</th><th>PER</th><th>REC</th><th>TAP</th><th>FP</th><th>VAL</th>';
+        t += '</tr></thead><tbody>';
+
+        // Sort: starters first, then by points descending
+        const sorted = [...players].sort((a, b) => {
+          if (a.starter && !b.starter) return -1;
+          if (!a.starter && b.starter) return 1;
+          return b.pts - a.pts;
+        });
+
+        sorted.forEach(p => {
+          t += `<tr>
+            <td class="left">${p.starter ? '*' : ''}${p.dorsal}</td>
+            <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+            <td>${p.min || '-'}</td>
+            <td><strong>${p.pts}</strong></td>
+            <td>${p.t2 || '-'}</td><td>${p.t3 || '-'}</td><td>${p.tl || '-'}</td>
+            <td>${p.reb || '-'}</td><td>${p.ast || '-'}</td>
+            <td>${p.per || '-'}</td><td>${p.rec || '-'}</td>
+            <td>${p.tap || '-'}</td><td>${p.fp || '-'}</td>
+            <td style="color:var(--accent)">${p.val || '-'}</td>
+          </tr>`;
+        });
+
+        t += '</tbody></table></div>';
+        return t;
+      };
+
+      html += renderTeamTable(homePlayers, ms.home || 'Local', ms.scoreHome);
+      html += '<div style="border-top:2px solid var(--border);"></div>';
+      html += renderTeamTable(awayPlayers, ms.away || 'Visitante', ms.scoreAway);
+
+      container.innerHTML = html;
     }
 
     // ========================================

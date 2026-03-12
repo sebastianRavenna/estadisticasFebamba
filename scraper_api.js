@@ -31,10 +31,19 @@ const BASE_URL_STATIC = 'https://appaficioncabb.indalweb.net';
 let BASE_URL_DYNAMIC = 'https://appaficioncabb.indalweb.net/v2';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSION_FILE = path.join(__dirname, 'data', '.session.json');
+const DB_FILE = path.join(__dirname, 'data', 'db.json');
 const DELAY_MS = 1500;
 
 // Versión de la app: 4.0.44 → split('.') → pad each to 2 digits → '040044' → parseInt = 40044
 const APP_VERSION = '40044';
+
+// ============================================================
+// Filtros de competencias y fases
+// ============================================================
+// Competencias a excluir del scraping
+const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
+// Fases a excluir dentro de las competencias incluidas
+const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA'];
 
 /**
  * Genera un uid simulando el formato de Android ID (Cordova device.uuid).
@@ -83,6 +92,35 @@ function saveSession() {
   ensureDataDir();
   fs.writeFileSync(SESSION_FILE, JSON.stringify(SESSION, null, 2), 'utf8');
   console.log(`  Sesión guardada`);
+}
+
+// ============================================================
+// Base de datos local incremental
+// ============================================================
+let DB = {
+  meta: { lastUpdate: null },
+  matchStats: {},   // keyed by IdPartido (hex string)
+  teamStats: {},    // keyed by "compId_faseTag_grupoTag_equipoId"
+  topPlayers: {},   // keyed by "compId_faseTag_grupoTag"
+};
+
+function loadDB() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      DB = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      const matchCount = Object.keys(DB.matchStats || {}).length;
+      console.log(`  BD local cargada: ${matchCount} partidos en cache`);
+      return true;
+    }
+  } catch { /* ignorar */ }
+  console.log('  BD local no encontrada, se creará una nueva');
+  return false;
+}
+
+function saveDB() {
+  DB.meta.lastUpdate = new Date().toISOString();
+  fs.writeFileSync(DB_FILE, JSON.stringify(DB, null, 2), 'utf8');
+  console.log(`  BD local guardada: ${Object.keys(DB.matchStats).length} partidos`);
 }
 
 /**
@@ -418,66 +456,20 @@ async function getHorariosJornadas(idFase, idGrupo) {
   return data;
 }
 
-async function getPartido(idPartido) {
-  console.log(`\n--- Obteniendo partido ${idPartido} ---`);
-  const data = await apiCall('partido.ashx', {
-    accion: 'partido',
-    id_partido: idPartido,
-  });
-  return data;
-}
-
 async function getEstadisticasPartido(idPartido) {
-  console.log(`\n--- Obteniendo estadísticas partido ${idPartido} ---`);
-  const data = await apiCall('estadisticas.ashx', {
+  console.log(`  Obteniendo box score partido ${idPartido.substring(0, 20)}...`);
+  // NOTA: estadisticas.ashx retorna 404, usar envivo/estadisticas.ashx que funciona
+  const data = await apiCall('envivo/estadisticas.ashx', {
     accion: 'estadisticas',
     id_partido: idPartido,
   });
   return data;
 }
 
-async function getEstadisticasEquipo(idEquipo, idCategoriaCompeticion, idFase, idGrupo) {
-  console.log(`\n--- Obteniendo estadísticas equipo ${idEquipo} ---`);
-  const data = await apiCall('estadisticas.ashx', {
-    accion: 'estadisticasEquipo',
-    id_equipo: idEquipo,
-    id_categoria_competicion: idCategoriaCompeticion,
-    id_fase: idFase,
-    id_grupo: idGrupo,
-  });
-  return data;
-}
-
-async function getEstadisticasJugador(idJugador, idCategoriaCompeticion, idFase, idGrupo) {
-  console.log(`\n--- Obteniendo estadísticas jugador ${idJugador} ---`);
-  const data = await apiCall('estadisticas.ashx', {
-    accion: 'estadisticasJugador',
-    id_jugador: idJugador,
-    id_categoria_competicion: idCategoriaCompeticion,
-    id_fase: idFase,
-    id_grupo: idGrupo,
-  });
-  return data;
-}
-
-async function getEquipo(idEquipo) {
-  console.log(`\n--- Obteniendo equipo ${idEquipo} ---`);
-  const data = await apiCall('equipo.ashx', {
-    accion: 'equipo',
-    id_equipo: idEquipo,
-  });
-  return data;
-}
-
-async function getJugadores(idEquipo, idCategoriaCompeticion) {
-  console.log(`\n--- Obteniendo jugadores equipo ${idEquipo} ---`);
-  const data = await apiCall('jugadores.ashx', {
-    accion: 'jugadores',
-    id_equipo: idEquipo,
-    id_categoria_competicion: idCategoriaCompeticion,
-  });
-  return data;
-}
+// NOTA: equipo.ashx, jugadores.ashx, estadisticas.ashx, partido.ashx → retornan 404
+// NOTA: categoria.ashx mejoresJugadores → retorna 500 (bug del servidor)
+// NOTA: categoria.ashx estadisticasEquipo → retorna error "Faltan parámetros"
+// Los top players y stats por equipo se computan desde los box scores en build_data.js
 
 async function buscar(tipo, texto) {
   console.log(`\n--- Buscando ${tipo}: "${texto}" ---`);
@@ -540,6 +532,16 @@ async function scrapeCompeticion(comp) {
     for (const fase of listaFases) {
       const faseId = fase.IdFase || fase.Id;
       const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
+
+      // Filtrar fases excluidas
+      const isExcludedPhase = EXCLUDED_PHASES.some(excl =>
+        faseName.toUpperCase().includes(excl.toUpperCase())
+      );
+      if (isExcludedPhase) {
+        console.log(`  [SKIP] Fase excluida: ${faseName}`);
+        continue;
+      }
+
       // TipoFase viene dentro de cada fase (ej: "LIGA"), no en el top-level
       const tipoFase = fase.TipoFase || fase.tipoFase || '';
       const grupos = fase.Grupos || fase.ListaGrupos || [];
@@ -616,79 +618,61 @@ async function scrapeCompeticion(comp) {
       }
       await sleep(DELAY_MS);
 
-      // 5. Extract team IDs from horarios partidos (more reliable than clasificacion)
-      const equipoIds = new Set();
+      // 5. Estadísticas individuales de partidos finalizados (incremental)
+      // Usa envivo/estadisticas.ashx que retorna box scores completos
+      // Buscar partidos terminados tanto en horarios como en jornadas
+      const finalizadosFromHorarios = (horarios && horarios.partidos || [])
+        .filter(p => p.Estado === 'Terminado');
+      const finalizadosFromJornadas = jornadas ? extractPartidos(jornadas)
+        .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado') : [];
 
-      // From horarios (match schedules with team names)
-      if (horarios && horarios.partidos) {
-        for (const p of horarios.partidos) {
-          // horariosJornadas doesn't include IdEquipoLocal/Visitante hex IDs
-          // but the team names are available for the dashboard
-        }
+      // Combinar y deduplicar por IdPartido
+      const allFinalizados = new Map();
+      for (const p of [...finalizadosFromHorarios, ...finalizadosFromJornadas]) {
+        const pid = p.IdPartido || p.Id || p.id;
+        if (pid) allFinalizados.set(pid, p);
       }
 
-      // From clasificacion (if available)
-      if (clasificacion && clasificacion.resultado === 'correcto') {
-        const clasifData = clasificacion.datos || clasificacion.clasificacion || clasificacion;
-        const equipos = Array.isArray(clasifData) ? clasifData :
-          clasifData.ListaClasificacion || clasifData.Clasificacion || [];
-        for (const eq of (Array.isArray(equipos) ? equipos : [])) {
-          const eqId = eq.IdEquipo || eq.Id;
-          if (eqId) equipoIds.add(eqId);
+      const totalFinalizados = allFinalizados.size;
+      let nuevos = 0;
+      let skipped = 0;
+
+      for (const [partidoId, partido] of allFinalizados) {
+        // Chequear si ya está en la BD local → skip
+        if (DB.matchStats[partidoId]) {
+          skipped++;
+          continue;
         }
-      }
 
-      // From jornadas (if they contain embedded partidos)
-      if (jornadas) {
-        const listaP = extractPartidos(jornadas);
-        for (const p of listaP) {
-          if (p.IdEquipoLocal) equipoIds.add(p.IdEquipoLocal);
-          if (p.IdEquipoVisitante) equipoIds.add(p.IdEquipoVisitante);
-        }
-      }
-
-      console.log(`    Equipos encontrados: ${equipoIds.size}`);
-
-      for (const eqId of equipoIds) {
-        // Obtener detalle del equipo (incluye entrenador)
-        const equipo = await getEquipo(eqId);
-        if (equipo && equipo.resultado !== 'error') {
-          saveData(`equipo_${eqId}.json`, equipo);
-        }
-        await sleep(DELAY_MS);
-
-        // Obtener jugadores del equipo
-        const jugadores = await getJugadores(eqId, compId);
-        if (jugadores && jugadores.resultado !== 'error') {
-          saveData(`jugadores_${eqId}_${compIdSafe}.json`, jugadores);
+        nuevos++;
+        const stats = await getEstadisticasPartido(partidoId);
+        if (stats && stats.resultado !== 'error') {
+          // Guardar en BD con metadata del partido
+          DB.matchStats[partidoId] = {
+            ...stats,
+            _meta: {
+              compId: compIdNumeric,
+              compName,
+              faseName,
+              grupoName,
+              home: partido.NombreEquipoLocal || partido.EquipoLocal || '',
+              away: partido.NombreEquipoVisitante || partido.EquipoVisitante || '',
+              date: partido.Fecha || '',
+              scrapedAt: new Date().toISOString(),
+            },
+          };
         }
         await sleep(DELAY_MS);
       }
 
-      // 5. Estadísticas de partidos finalizados (limitar a 5)
-      if (jornadas) {
-        const listaPartidos = extractPartidos(jornadas);
-        const finalizados = listaPartidos
-          .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado')
-          .slice(0, 5);
+      console.log(`    Partidos finalizados: ${totalFinalizados} (${nuevos} nuevos, ${skipped} ya en BD)`);
 
-        if (finalizados.length > 0) {
-          console.log(`    Partidos finalizados: ${finalizados.length} de ${listaPartidos.length} total`);
+      // NOTA: mejoresJugadores y estadisticasEquipo vía API no funcionan
+      // (500 y "Faltan parámetros" respectivamente).
+      // Los top players y stats por equipo se computan desde los box scores en build_data.js
 
-          for (const partido of finalizados) {
-            const partidoId = partido.IdPartido || partido.Id || partido.id;
-            if (!partidoId) continue;
-
-            const stats = await getEstadisticasPartido(partidoId);
-            if (stats && stats.resultado !== 'error') {
-              saveData(`stats_partido_${partidoId}.json`, stats);
-            }
-            await sleep(DELAY_MS);
-          }
-        } else {
-          console.log(`    Sin partidos finalizados aún (${listaPartidos.length} programados)`);
-        }
-      }
+      // Guardar BD periódicamente (cada fase/grupo)
+      saveDB();
 
       results.fases.push({ faseId, faseName, tipoFase, grupoId, grupoName, clasificacion, jornadas });
   }
@@ -737,6 +721,7 @@ async function main() {
   console.log(`Método: POST (application/x-www-form-urlencoded;charset=UTF-8)`);
 
   ensureDataDir();
+  loadDB();
 
   // Paso 0: Registrar dispositivo
   await registerDevice();
@@ -770,25 +755,24 @@ async function main() {
     }
   }
 
-  // Mostrar las competiciones encontradas
+  // Mostrar las competiciones encontradas y aplicar filtros
+  console.log('\n  Competiciones encontradas:');
   for (const comp of febambaComps) {
-    console.log(`  - [${comp.IdCompeticionCategoria}] ${comp.NombreCompeticion} / ${comp.NombreCategoria}`);
+    const excluded = EXCLUDED_COMPETITIONS.some(excl =>
+      comp.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase())
+    );
+    const marker = excluded ? '[EXCLUIDA]' : '[OK]';
+    console.log(`  ${marker} [${comp.IdCompeticionCategoria}] ${comp.NombreCompeticion} / ${comp.NombreCategoria}`);
   }
 
-  // Paso 2: Scrapear competiciones principales de FEBAMBA
-  // Priorizar: SUPERIOR 2026 (primera división), FORMATIVAS 2026
-  const priorityOrder = ['SUPERIOR', 'FLEX SUPERIOR', 'FORMATIVAS', 'FLEX FORMATIVAS', 'MASTER'];
-  const sortedComps = [...febambaComps].sort((a, b) => {
-    const aIdx = priorityOrder.findIndex(p => a.NombreCompeticion?.includes(p));
-    const bIdx = priorityOrder.findIndex(p => b.NombreCompeticion?.includes(p));
-    return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-  });
+  // Paso 2: Filtrar competiciones excluidas y scrapear las restantes
+  const targetComps = febambaComps.filter(c =>
+    !EXCLUDED_COMPETITIONS.some(excl =>
+      c.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase())
+    )
+  );
 
-  // Scrapear las primeras 5 competiciones (para no sobrecargar)
-  const maxComps = 5;
-  const targetComps = sortedComps.slice(0, maxComps);
-
-  console.log(`\n--- Scrapeando ${targetComps.length} competiciones ---`);
+  console.log(`\n--- Scrapeando ${targetComps.length} competiciones (excluidas: ${febambaComps.length - targetComps.length}) ---`);
 
   for (const comp of targetComps) {
     try {
@@ -799,11 +783,15 @@ async function main() {
     await sleep(DELAY_MS);
   }
 
+  // Guardar BD final
+  saveDB();
+
   // Paso 3: Resumen
   console.log('\n===========================================');
   console.log(' Scraping completado!');
   console.log('===========================================');
   console.log(`Archivos guardados en: ${DATA_DIR}/`);
+  console.log(`BD local: ${Object.keys(DB.matchStats || {}).length} partidos con box score`);
 
   const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
   console.log(`Total archivos: ${files.length}`);

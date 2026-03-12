@@ -17,4 +17,5 @@ test_scraper_quick.js
 data/test_*.json
 data/debug_*.json
 data/.session.json
+data/db.json
 test_*.js

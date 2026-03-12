@@ -1,5 +1,6 @@
 /**
  * Quick scrape: just get horariosJornadas for SUPERIOR 2026, all grupos
+ * Excluye fases de PRE LIGAMETROPOLITANA
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -10,6 +11,9 @@ let BASE_URL_DYNAMIC = 'https://appaficioncabb.indalweb.net/v2';
 const APP_VERSION = '40044';
 let SESSION = { id_dispositivo: '', key: '', uid: '' };
 const DATA_DIR = path.join(__dirname, 'data');
+
+// Fases a excluir
+const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA'];
 
 async function postAPI(url, params) {
   const body = new URLSearchParams(params).toString();
@@ -62,9 +66,10 @@ async function main() {
   if (!busq || !busq.categorias) { console.log('Search failed'); return; }
   saveData('busqueda_buenos_aires.json', busq);
 
-  // Find SUPERIOR 2026
+  // Find SUPERIOR 2026 (not FLEX SUPERIOR)
   const comp = busq.categorias.find(c =>
     c.NombreCompeticion && c.NombreCompeticion.includes('SUPERIOR') &&
+    !c.NombreCompeticion.includes('FLEX') &&
     c.NombreDelegacion && c.NombreDelegacion.includes('METROPOLITANA')
   );
   if (!comp) { console.log('SUPERIOR not found'); return; }
@@ -79,8 +84,14 @@ async function main() {
   console.log('Fases:', fg.listaFasesGrupo.length);
   await sleep(500);
 
-  // For each fase/grupo, get horariosJornadas + jornadas
+  // For each fase/grupo, get horariosJornadas + jornadas (skip excluded phases)
   for (const fase of fg.listaFasesGrupo) {
+    const faseName = fase.NombreFase || '';
+    const isExcluded = EXCLUDED_PHASES.some(excl => faseName.toUpperCase().includes(excl.toUpperCase()));
+    if (isExcluded) {
+      console.log(`\n[SKIP] Fase excluida: ${faseName}`);
+      continue;
+    }
     const grupos = fase.Grupos || [];
     for (const grupo of grupos) {
       const faseTag = (fase.NombreFase || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
