@@ -1,10 +1,165 @@
 {
   "resultado": "correcto",
   "id_dispositivo": "",
-  "key": "MUTC0u_ZKdBCdgfYN8bHO_0O6PmbcsZRmgtdT7oV40N2QSwO15F5Zo-X0juJTFBCUR1Y02MkR5DHEog8cfkQUOO5Gka7Givqy6_g0bALKzy-50VsIoR8e1J8HLvJKJdXK9JqRvQAH3u5QDdHgHX99Plr6uMmGJCH6IW_H603sIFLV7vLZ1PosM162oYmCwhs",
+  "key": "MUTC0u_ZKdBCdgfYN8bHO_0O6PmbcsZRmgtdT7oV40N2QSwO15F5Zo-X0juJTFBCUR1Y02MkR5DHEog8cfkQUOO5Gka7Givqy6_g0bALKzy-50VsIoR8e1J8HLvJKJdXXzDXgozUB_hTMp_5QR2HlY7C0oV9CgYJzWw8UFo5og0D5DQfaeiZ-rqmr01LIbJf",
   "ruta": "https://appaficioncabb.indalweb.net/",
   "faseActual": null,
   "grupoActual": null,
-  "listaFasesGrupo": [],
+  "listaFasesGrupo": [
+    {
+      "IdFase": "77004B00560071006E003900420036004C003400550034004A005600510048005900620063004C00410067003D003D00",
+      "NombreFase": "TORNEO DE CLASIFICACION",
+      "TipoFase": "LIGA",
+      "Grupos": [
+        {
+          "IdGrupo": "480065006B004400420074005300380079006A0059006800680030004900790077004200480058004A0041003D003D00",
+          "NombreGrupo": "NORTE 1A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "6400720067003300570053006A006200450073004100500033006D0050006C0050004700790077006D0041003D003D00",
+          "NombreGrupo": "CENTRO 1A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "570048003000390033004B00690034003800420054007900540033004F006D0062007A0033006900440067003D003D00",
+          "NombreGrupo": "0ESTE 1A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "2F005400660051005300470051004E004C0071003700610036004E006D0061006200450042003100690077003D003D00",
+          "NombreGrupo": "SUR 1A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "570076004D006E00470067006800770032004F0048006A00510033004B004B006400640051003800760067003D003D00",
+          "NombreGrupo": "NORTE 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "6D003900410069004700610062003400320042005200580042007A00610031004300700076006800300067003D003D00",
+          "NombreGrupo": "CENTRO 2 B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "5A0075007300370059002F0063007000450079004A005500630066005800690074004B0030006700340077003D003D00",
+          "NombreGrupo": "OESTE 2 B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "6300350030002F004C006300440063003000730042004D0059006F002F004E006C00330039006D007A0051003D003D00",
+          "NombreGrupo": "SUR 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "690069007500470058004C005200730055007A006C0042006E006B006D00670049002F0041005900350067003D003D00",
+          "NombreGrupo": "NORTE 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "550067006A0056006C006700300049004C0038005200670047006D00610063003600740053004500490041003D003D00",
+          "NombreGrupo": "CENTRO 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "7700320049004100530051006F005A004A004C00430030007A006F004B0079007A007A00720046006D0077003D003D00",
+          "NombreGrupo": "OESTE 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "7600420031006A003200660048007300450031004B00530063007A0078007500750038006D003700750041003D003D00",
+          "NombreGrupo": "SUR 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        }
+      ],
+      "Rondas": []
+    },
+    {
+      "IdFase": "520074007A0034006D0061006E0055006800340079007100470050004D006800340056006E007400750051003D003D00",
+      "NombreFase": "TORNEO RECLASIFICATORIO",
+      "TipoFase": "LIGA",
+      "Grupos": [
+        {
+          "IdGrupo": "6A0036004E0030005900460077006E006D00740074003400780051005A00560032006D00780033004B0077003D003D00",
+          "NombreGrupo": "CENTRO 2A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "54006A007100490077004A006600460079007200460051004C00440063004C005900770072003300680041003D003D00",
+          "NombreGrupo": "CENTRO 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "460071007600380075004100670079006C004C007800620039003900670072006C00670077007100460067003D003D00",
+          "NombreGrupo": "NORTE 2A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "4E00330049006C00420059004A00530044003100300031003500360078005700440054007A007100480067003D003D00",
+          "NombreGrupo": "NORTE 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "440047003500390066004C005400520072006500580065004B005200770041006C004E0061003400550077003D003D00",
+          "NombreGrupo": "NORTE 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "4800670071003300420033002F0048007100780054005500330052004C0043006C00660077006C00320067003D003D00",
+          "NombreGrupo": "OESTE 2 A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "790070004100380048006500760032004900340049005700780076006800540049005300470074006C0067003D003D00",
+          "NombreGrupo": "OESTE 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "770065004F0032003400750050007A00690073003700440063004B004B007A00350053007A007100660067003D003D00",
+          "NombreGrupo": "OESTE 3C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "45003100750061002F00640067007A0073007A004A0062004E004900660064007100670056004A005A0067003D003D00",
+          "NombreGrupo": "SUR 2A",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "4F0041004700700059006A004D0066004300570075005900430030004E00330031006C0053003600580041003D003D00",
+          "NombreGrupo": "SUR 2B",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        },
+        {
+          "IdGrupo": "4600680047004B004B0052003700430077002F006B004300380066006D00510064006E0048004C00740077003D003D00",
+          "NombreGrupo": "SUR 2C",
+          "IdTipoClasificacion": 1,
+          "NombreTipoClasificacion": "FIBA"
+        }
+      ],
+      "Rondas": []
+    }
+  ],
   "error": ""
 }
