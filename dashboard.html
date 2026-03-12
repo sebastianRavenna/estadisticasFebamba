@@ -470,7 +470,6 @@
     <div class="nav-tab" data-section="stats">Estadisticas</div>
     <div class="nav-tab" data-section="teams">Equipos</div>
     <div class="nav-tab" data-section="compare">Comparar</div>
-    <div class="nav-tab" data-section="schedule">Calendario</div>
   </div>
 
   <div class="content">
@@ -566,6 +565,7 @@
       <div class="filters fade-in">
         <select class="filter-select" id="statsView">
           <option value="topPlayers">Mejores Jugadores</option>
+          <option value="teamRoster">Plantel (acumulado por equipo)</option>
           <option value="boxScores">Box Scores (por partido)</option>
         </select>
         <select class="filter-select" id="statsCategory">
@@ -577,6 +577,7 @@
         <select class="filter-select" id="boxScoreMatch" style="display:none;">
           <option value="">Seleccionar partido...</option>
         </select>
+        <select class="filter-select" id="rosterTeamSelect" style="display:none;"></select>
       </div>
 
       <!-- Top Players -->
@@ -588,6 +589,19 @@
           </div>
           <div class="card-body" style="padding: 0; overflow-x: auto;">
             <div id="topPlayersList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Team Roster (Accumulated Stats) -->
+      <div id="statsTeamRoster" class="fade-in" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="rosterTitle">Plantel - Estadisticas Acumuladas</h3>
+            <span style="color: var(--text-muted); font-size: 0.75rem;" id="rosterInfo"></span>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="rosterContent"></div>
           </div>
         </div>
       </div>
@@ -666,26 +680,6 @@
         </div>
       </div>
 
-    </div>
-
-    <!-- ==================== SCHEDULE ==================== -->
-    <div class="section" id="sec-schedule">
-      <div class="card fade-in">
-        <div class="card-header">
-          <h3>Calendario de Jornadas</h3>
-          <span style="color: var(--text-muted); font-size: 0.75rem;" id="scheduleInfo"></span>
-        </div>
-        <div class="card-body" style="padding: 0; overflow-x: auto;">
-          <table class="standings-table" id="scheduleTable">
-            <thead><tr>
-              <th class="num">Fecha</th>
-              <th>Dia</th>
-              <th class="num">Estado</th>
-            </tr></thead>
-            <tbody id="scheduleBody"></tbody>
-          </table>
-        </div>
-      </div>
     </div>
 
     <!-- ==================== COMPARE ==================== -->
@@ -888,11 +882,21 @@
       }));
       populateCompSelect();
 
-      // Load first competition with data
+      // Load default competition: SUPERIOR 2026, default fase: Reclasificacion Sur 2
       const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
       if (firstWithData) {
         document.getElementById('compSelect').value = firstWithData.id;
-        loadStaticCompetition(firstWithData.id);
+        // Try to find "Reclasificacion Sur 2" as default fase
+        const comp = STATIC_DATA.competitions.find(c => String(c.id) === String(firstWithData.id));
+        const defaultFase = comp?.fases?.find(f =>
+          f.grupoName?.toUpperCase().includes('SUR 2') ||
+          (f.faseName?.toUpperCase().includes('SUR') && f.grupoName?.includes('2'))
+        );
+        if (defaultFase) {
+          loadStaticCompetition(firstWithData.id, defaultFase.faseTag, defaultFase.grupoTag);
+        } else {
+          loadStaticCompetition(firstWithData.id);
+        }
       } else {
         document.getElementById('dataSource').textContent = 'Sin datos';
         DATA = getInlineData();
@@ -1018,7 +1022,6 @@
       renderTeams();
       renderMatches();
       renderStats();
-      renderSchedule();
       renderCompare();
     }
 
@@ -1359,46 +1362,6 @@
     }
 
     // ========================================
-    // SCHEDULE
-    // ========================================
-    function renderSchedule() {
-      const schedule = DATA.schedule || [];
-      const info = document.getElementById('scheduleInfo');
-      const body = document.getElementById('scheduleBody');
-
-      if (!schedule.length) {
-        if (info) info.textContent = 'Sin calendario disponible';
-        if (body) body.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-muted);">No hay jornadas programadas</td></tr>';
-        return;
-      }
-
-      if (info) {
-        const comp = DATA.competition || {};
-        info.textContent = `${comp.fase || ''} / ${comp.grupo || ''} - ${schedule.length} jornadas`;
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      let html = '';
-      for (const s of schedule) {
-        const date = s.date || '';
-        const d = new Date(date + 'T12:00:00');
-        const dayName = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
-        const isPast = date < today;
-        const isToday = date === today;
-        const statusClass = isToday ? 'style="color:var(--accent);font-weight:bold;"' : isPast ? 'style="color:var(--text-muted);"' : '';
-        const statusText = isToday ? 'HOY' : isPast ? 'Pasada' : 'Programada';
-        const statusBadge = isToday ? 'color:var(--accent);border-color:var(--accent);' : isPast ? '' : 'color:var(--win);border-color:var(--win);';
-
-        html += `<tr ${statusClass}>
-          <td class="num"><strong>Fecha ${s.matchday}</strong></td>
-          <td>${dayName}</td>
-          <td class="num"><span class="data-badge" style="font-size:0.7rem;${statusBadge}">${statusText}</span></td>
-        </tr>`;
-      }
-      if (body) body.innerHTML = html;
-    }
-
-    // ========================================
     // COMPARE TEAMS
     // ========================================
     function renderCompare() {
@@ -1533,14 +1496,18 @@
       const viewSelect = document.getElementById('statsView');
       const catSelect = document.getElementById('statsCategory');
       const matchSelect = document.getElementById('boxScoreMatch');
+      const rosterSelect = document.getElementById('rosterTeamSelect');
 
       viewSelect.onchange = () => {
-        const isBox = viewSelect.value === 'boxScores';
-        document.getElementById('statsTopPlayers').style.display = isBox ? 'none' : '';
-        document.getElementById('statsBoxScores').style.display = isBox ? '' : 'none';
-        catSelect.style.display = isBox ? 'none' : '';
-        matchSelect.style.display = isBox ? '' : 'none';
-        if (isBox) renderBoxScore();
+        const val = viewSelect.value;
+        document.getElementById('statsTopPlayers').style.display = val === 'topPlayers' ? '' : 'none';
+        document.getElementById('statsBoxScores').style.display = val === 'boxScores' ? '' : 'none';
+        document.getElementById('statsTeamRoster').style.display = val === 'teamRoster' ? '' : 'none';
+        catSelect.style.display = val === 'topPlayers' ? '' : 'none';
+        matchSelect.style.display = val === 'boxScores' ? '' : 'none';
+        rosterSelect.style.display = val === 'teamRoster' ? '' : 'none';
+        if (val === 'boxScores') renderBoxScore();
+        if (val === 'teamRoster') renderTeamRoster();
       };
       catSelect.onchange = () => renderTopPlayers();
 
@@ -1552,7 +1519,160 @@
       });
       matchSelect.onchange = () => renderBoxScore();
 
+      // Populate roster team selector from matchStats
+      const rosterTeams = new Set();
+      matchStats.forEach(ms => {
+        if (ms.home) rosterTeams.add(ms.home);
+        if (ms.away) rosterTeams.add(ms.away);
+      });
+      // Also add teams from standings
+      (DATA.standings || []).forEach(s => { if (s.team) rosterTeams.add(s.team); });
+      rosterSelect.innerHTML = '';
+      [...rosterTeams].sort().forEach(t => {
+        rosterSelect.innerHTML += `<option value="${t}">${t}</option>`;
+      });
+      rosterSelect.onchange = () => renderTeamRoster();
+
       renderTopPlayers();
+    }
+
+    function renderTeamRoster() {
+      const matchStats = DATA.matchStats || [];
+      const container = document.getElementById('rosterContent');
+      const titleEl = document.getElementById('rosterTitle');
+      const infoEl = document.getElementById('rosterInfo');
+      const teamName = document.getElementById('rosterTeamSelect').value;
+
+      if (!matchStats.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin box scores disponibles. Ejecuta el scraper para obtener estadisticas de partidos.</div>';
+        return;
+      }
+
+      if (!teamName) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Selecciona un equipo</div>';
+        return;
+      }
+
+      // Accumulate player stats across all matches for this team
+      const playerAccum = {};
+      let teamGames = 0;
+      let teamPts = 0, teamReb = 0, teamAst = 0, teamPer = 0, teamRec = 0, teamTap = 0, teamFp = 0, teamVal = 0;
+      let teamT2m = 0, teamT2i = 0, teamT3m = 0, teamT3i = 0, teamTlm = 0, teamTli = 0;
+
+      matchStats.forEach(ms => {
+        let players = null;
+        if (ms.home === teamName) players = ms.homePlayers || [];
+        else if (ms.away === teamName) players = ms.awayPlayers || [];
+        if (!players) return;
+
+        teamGames++;
+        players.forEach(p => {
+          const key = p.name || p.dorsal || 'unknown';
+          if (!playerAccum[key]) {
+            playerAccum[key] = {
+              name: p.name, dorsal: p.dorsal, pj: 0,
+              pts: 0, reb: 0, rebO: 0, rebD: 0, ast: 0, per: 0, rec: 0, tap: 0, fp: 0, val: 0,
+              t2m: 0, t2i: 0, t3m: 0, t3i: 0, tlm: 0, tli: 0,
+            };
+          }
+          const a = playerAccum[key];
+          a.pj++;
+          a.pts += p.pts || 0;
+          a.reb += p.reb || 0;
+          a.rebO += p.rebO || 0;
+          a.rebD += p.rebD || 0;
+          a.ast += p.ast || 0;
+          a.per += p.per || 0;
+          a.rec += p.rec || 0;
+          a.tap += p.tap || 0;
+          a.fp += p.fp || 0;
+          a.val += p.val || 0;
+
+          // Parse t2, t3, tl strings like "3/7"
+          const parseShot = (s) => { const m = (s || '').match(/(\d+)\/(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
+          const [t2m, t2i] = parseShot(p.t2);
+          const [t3m, t3i] = parseShot(p.t3);
+          const [tlm, tli] = parseShot(p.tl);
+          a.t2m += t2m; a.t2i += t2i;
+          a.t3m += t3m; a.t3i += t3i;
+          a.tlm += tlm; a.tli += tli;
+
+          // Team totals
+          teamPts += p.pts || 0;
+          teamReb += p.reb || 0;
+          teamAst += p.ast || 0;
+          teamPer += p.per || 0;
+          teamRec += p.rec || 0;
+          teamTap += p.tap || 0;
+          teamFp += p.fp || 0;
+          teamVal += p.val || 0;
+          teamT2m += t2m; teamT2i += t2i;
+          teamT3m += t3m; teamT3i += t3i;
+          teamTlm += tlm; teamTli += tli;
+        });
+      });
+
+      const players = Object.values(playerAccum).sort((a, b) => b.pts - a.pts);
+      if (!players.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin estadisticas para este equipo</div>';
+        return;
+      }
+
+      titleEl.textContent = `Plantel - ${teamName}`;
+      infoEl.textContent = `${players.length} jugadores | ${teamGames} partidos`;
+
+      const pct = (m, i) => i > 0 ? (m / i * 100).toFixed(0) + '%' : '-';
+
+      let html = '<table class="player-table"><thead><tr>';
+      html += '<th class="left">Nro</th><th class="left">Jugador</th><th>PJ</th>';
+      html += '<th>PTS</th><th>T2</th><th>T3</th><th>TL</th>';
+      html += '<th>REB</th><th>AST</th><th>PER</th><th>REC</th><th>TAP</th><th>FP</th><th>VAL</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach(p => {
+        html += `<tr>
+          <td class="left">${p.dorsal || '-'}</td>
+          <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+          <td>${p.pj}</td>
+          <td><strong>${p.pts}</strong></td>
+          <td>${p.t2m}/${p.t2i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.t2m, p.t2i)}</span></td>
+          <td>${p.t3m}/${p.t3i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.t3m, p.t3i)}</span></td>
+          <td>${p.tlm}/${p.tli} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.tlm, p.tli)}</span></td>
+          <td>${p.reb}</td><td>${p.ast}</td>
+          <td>${p.per}</td><td>${p.rec}</td>
+          <td>${p.tap}</td><td>${p.fp}</td>
+          <td style="color:var(--accent)"><strong>${p.val}</strong></td>
+        </tr>`;
+      });
+
+      // Team totals row
+      html += `<tr style="border-top:2px solid var(--accent);font-weight:700;background:var(--bg-hover);">
+        <td class="left" colspan="2" style="color:var(--accent);">EQUIPO</td>
+        <td>${teamGames}</td>
+        <td><strong>${teamPts}</strong></td>
+        <td>${teamT2m}/${teamT2i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamT2m, teamT2i)}</span></td>
+        <td>${teamT3m}/${teamT3i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamT3m, teamT3i)}</span></td>
+        <td>${teamTlm}/${teamTli} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamTlm, teamTli)}</span></td>
+        <td>${teamReb}</td><td>${teamAst}</td>
+        <td>${teamPer}</td><td>${teamRec}</td>
+        <td>${teamTap}</td><td>${teamFp}</td>
+        <td style="color:var(--accent)"><strong>${teamVal}</strong></td>
+      </tr>`;
+
+      // Promedios row
+      html += `<tr style="font-style:italic;color:var(--text-secondary);background:var(--bg-hover);">
+        <td class="left" colspan="2">Promedio/partido</td>
+        <td>-</td>
+        <td>${(teamPts/teamGames).toFixed(1)}</td>
+        <td colspan="3"></td>
+        <td>${(teamReb/teamGames).toFixed(1)}</td><td>${(teamAst/teamGames).toFixed(1)}</td>
+        <td>${(teamPer/teamGames).toFixed(1)}</td><td>${(teamRec/teamGames).toFixed(1)}</td>
+        <td>${(teamTap/teamGames).toFixed(1)}</td><td>${(teamFp/teamGames).toFixed(1)}</td>
+        <td>${(teamVal/teamGames).toFixed(1)}</td>
+      </tr>`;
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
     }
 
     function renderTopPlayers() {
