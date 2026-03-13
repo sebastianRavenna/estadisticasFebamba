@@ -1,6 +1,8 @@
 /**
- * Quick scrape: just get horariosJornadas for SUPERIOR 2026, all grupos
- * Excluye fases de PRE LIGAMETROPOLITANA
+ * Quick scrape: baja clasificaciones, horarios y jornadas de todas las competencias
+ * (SUPERIOR + FORMATIVAS), excluyendo fases de PRE LIGAMETROPOLITANA y TORNEO DE CLASIFICACION.
+ *
+ * Uso: node scrape_quick.js
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -12,7 +14,8 @@ const APP_VERSION = '40044';
 let SESSION = { id_dispositivo: '', key: '', uid: '' };
 const DATA_DIR = path.join(__dirname, 'data');
 
-// Fases a excluir
+// Filtros
+const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
 const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
 
 async function postAPI(url, params) {
@@ -50,46 +53,26 @@ function saveData(filename, data) {
   fs.writeFileSync(path.join(DATA_DIR, filename), JSON.stringify(data, null, 2), 'utf8');
 }
 
-async function main() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-  SESSION.uid = crypto.randomBytes(8).toString('hex');
-  await postAPI(BASE_URL_STATIC + '/dispositivo.ashx', {
-    accion: 'registrar', uid: SESSION.uid, plataforma: 'android',
-    tipo_dispositivo: 'android', version: APP_VERSION,
-  });
-  console.log('Auth OK');
-  await sleep(500);
-
-  // Search for competitions
-  const busq = await apiCall('busqueda.ashx', { accion: 'buscarCategoria', texto: 'Buenos Aires' });
-  if (!busq || !busq.categorias) { console.log('Search failed'); return; }
-  saveData('busqueda_buenos_aires.json', busq);
-
-  // Find SUPERIOR 2026 (not FLEX SUPERIOR)
-  const comp = busq.categorias.find(c =>
-    c.NombreCompeticion && c.NombreCompeticion.includes('SUPERIOR') &&
-    !c.NombreCompeticion.includes('FLEX') &&
-    c.NombreDelegacion && c.NombreDelegacion.includes('METROPOLITANA')
-  );
-  if (!comp) { console.log('SUPERIOR not found'); return; }
-  console.log('Comp:', comp.NombreCompeticion, '| Id:', comp.IdCompeticionCategoria);
-  await sleep(500);
+async function scrapeCompetition(comp) {
+  const compId = comp.IdCompeticionCategoria;
+  const compIdSafe = String(compId);
+  console.log(`\n=== ${comp.NombreCompeticion} / ${comp.NombreCategoria} (${compId}) ===`);
 
   // Get fases/grupos
   const fg = await apiCall('categoria.ashx', { accion: 'fasesGrupos', id_categoria_competicion: comp.Id });
-  if (!fg || !fg.listaFasesGrupo) { console.log('fasesGrupos failed'); return; }
-  const compIdSafe = String(comp.IdCompeticionCategoria);
+  if (!fg || !fg.listaFasesGrupo) {
+    console.log('  fasesGrupos failed');
+    return;
+  }
   saveData(`fases_grupos_${compIdSafe}.json`, fg);
-  console.log('Fases:', fg.listaFasesGrupo.length);
+  console.log(`  Fases: ${fg.listaFasesGrupo.length}`);
   await sleep(500);
 
-  // For each fase/grupo, get horariosJornadas + jornadas (skip excluded phases)
   for (const fase of fg.listaFasesGrupo) {
     const faseName = fase.NombreFase || '';
     const isExcluded = EXCLUDED_PHASES.some(excl => faseName.toUpperCase().includes(excl.toUpperCase()));
     if (isExcluded) {
-      console.log(`\n[SKIP] Fase excluida: ${faseName}`);
+      console.log(`  [SKIP] Fase excluida: ${faseName}`);
       continue;
     }
     const grupos = fase.Grupos || [];
@@ -98,7 +81,7 @@ async function main() {
       const grupoTag = (grupo.NombreGrupo || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
       const fileTag = `${compIdSafe}_${faseTag}_${grupoTag}`;
 
-      console.log(`\n${fase.NombreFase} / ${grupo.NombreGrupo}`);
+      console.log(`\n  ${fase.NombreFase} / ${grupo.NombreGrupo}`);
 
       // horariosJornadas
       const horarios = await apiCall('categoria.ashx', {
@@ -109,9 +92,9 @@ async function main() {
       if (horarios && horarios.resultado === 'correcto') {
         saveData(`horarios_${fileTag}.json`, horarios);
         const numP = horarios.partidos ? horarios.partidos.length : 0;
-        console.log(`  Horarios: ${numP} partidos`);
+        console.log(`    Horarios: ${numP} partidos`);
       } else {
-        console.log(`  Horarios: error`, horarios?.error);
+        console.log(`    Horarios: error`, horarios?.error);
       }
       await sleep(1000);
 
@@ -125,11 +108,11 @@ async function main() {
       if (jorn && jorn.resultado === 'correcto') {
         saveData(`jornadas_${fileTag}.json`, jorn);
         const numJ = jorn.ListaJornadas ? jorn.ListaJornadas.length : 0;
-        console.log(`  Jornadas: ${numJ}`);
+        console.log(`    Jornadas: ${numJ}`);
       }
       await sleep(1000);
 
-      // Clasificacion (may fail, that's ok)
+      // Clasificacion
       const clasif = await apiCall('categoria.ashx', {
         accion: 'clasificacion',
         id_grupo: grupo.IdGrupo,
@@ -139,12 +122,57 @@ async function main() {
       });
       if (clasif && clasif.resultado === 'correcto') {
         saveData(`clasificacion_${fileTag}.json`, clasif);
-        console.log(`  Clasificacion: OK`);
+        console.log(`    Clasificacion: OK`);
       } else {
-        console.log(`  Clasificacion: ${clasif?.error || 'error'} (expected if no matches played)`);
+        console.log(`    Clasificacion: ${clasif?.error || 'error'} (normal si no hay partidos jugados)`);
       }
       await sleep(1000);
     }
+  }
+}
+
+async function main() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  // Auth
+  SESSION.uid = crypto.randomBytes(8).toString('hex');
+  const reg = await postAPI(BASE_URL_STATIC + '/dispositivo.ashx', {
+    accion: 'registrar', uid: SESSION.uid, plataforma: 'android',
+    tipo_dispositivo: 'android', version: APP_VERSION,
+  });
+  if (!SESSION.id_dispositivo) {
+    console.error('Error: No se pudo registrar el dispositivo. El servidor puede estar caido.');
+    return;
+  }
+  console.log('Auth OK');
+  await sleep(500);
+
+  // Search
+  const busq = await apiCall('busqueda.ashx', { accion: 'buscarCategoria', texto: 'Buenos Aires' });
+  if (!busq || !busq.categorias) {
+    console.log('Error: Busqueda fallida');
+    return;
+  }
+  saveData('busqueda_buenos_aires.json', busq);
+  console.log(`Encontradas ${busq.categorias.length} categorias`);
+
+  // Filter: FEBAMBA only, exclude unwanted
+  const febamba = busq.categorias.filter(c => {
+    const isFebamba = c.NombreDelegacion && (c.NombreDelegacion.includes('METROPOLITANA') || c.NombreDelegacion.includes('BUENOS AIRES'));
+    if (!isFebamba) return false;
+    return !EXCLUDED_COMPETITIONS.some(excl => c.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase()));
+  });
+
+  console.log(`\nCompetencias a scrapear: ${febamba.length}`);
+  febamba.forEach(c => console.log(`  [${c.IdCompeticionCategoria}] ${c.NombreCompeticion} / ${c.NombreCategoria}`));
+
+  for (const comp of febamba) {
+    try {
+      await scrapeCompetition(comp);
+    } catch (err) {
+      console.error(`  Error: ${err.message}`);
+    }
+    await sleep(500);
   }
 
   console.log('\n=== DONE ===');
