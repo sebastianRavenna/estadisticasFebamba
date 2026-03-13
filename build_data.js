@@ -19,7 +19,7 @@ const OUTPUT_FILE = path.join(DATA_DIR, 'dashboard_data.json');
 
 // Filtros (mismos que en scraper_api.js)
 const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
-const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA'];
+const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
 
 function parseCabbDate(dateStr) {
   if (!dateStr) return null;
