@@ -13,7 +13,7 @@ let SESSION = { id_dispositivo: '', key: '', uid: '' };
 const DATA_DIR = path.join(__dirname, 'data');
 
 // Fases a excluir
-const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA'];
+const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
 
 async function postAPI(url, params) {
   const body = new URLSearchParams(params).toString();

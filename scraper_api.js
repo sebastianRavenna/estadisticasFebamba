@@ -43,7 +43,7 @@ const APP_VERSION = '40044';
 // Competencias a excluir del scraping
 const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
 // Fases a excluir dentro de las competencias incluidas
-const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA'];
+const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
 
 /**
  * Genera un uid simulando el formato de Android ID (Cordova device.uuid).
