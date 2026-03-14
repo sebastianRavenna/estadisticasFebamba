@@ -24,6 +24,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// Proxy HTTP (opcional): set PROXY_URL env var para rutear requests
+// Ejemplo: PROXY_URL=http://user:pass@host:port node scraper_api.js
+// Si no se setea, se conecta directo.
+let fetchWithProxy = fetch;
+if (process.env.PROXY_URL) {
+  const { HttpsProxyAgent } = require('https-proxy-agent');
+  const agent = new HttpsProxyAgent(process.env.PROXY_URL);
+  fetchWithProxy = (url, opts = {}) => fetch(url, { ...opts, dispatcher: agent });
+  console.log(`[PROXY] Usando proxy: ${process.env.PROXY_URL}`);
+}
+
 // ============================================================
 // Configuración
 // ============================================================
@@ -38,12 +49,18 @@ const DELAY_MS = 1500;
 const APP_VERSION = '40044';
 
 // ============================================================
-// Filtros de competencias y fases
+// Filtros de competencias y fases (WHITELIST)
 // ============================================================
-// Competencias a excluir del scraping
-const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
-// Fases a excluir dentro de las competencias incluidas
-const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
+// Solo scrapear estas competencias (coincidencia parcial en NombreCompeticion)
+const INCLUDED_COMPETITIONS = ['SUPERIOR 2026', 'FORMATIVAS 2026'];
+
+// Solo scrapear estas combinaciones fase+grupo (coincidencia parcial en cada campo)
+// Para SUPERIOR 2026: RECLASIFICACION SUPERIOR / SUR 2
+// Para FORMATIVAS 2026 (todas las categorías): TORNEO RECLASIFICATORIO / SUR 2B
+const INCLUDED_PHASE_GROUPS = [
+  { fase: 'RECLASIFICACION SUPERIOR', grupo: 'SUR 2' },
+  { fase: 'TORNEO RECLASIFICATORIO',  grupo: 'SUR 2B' },
+];
 
 /**
  * Genera un uid simulando el formato de Android ID (Cordova device.uuid).
@@ -136,7 +153,7 @@ async function postAPI(url, params) {
   console.log(`  POST ${url}`);
   console.log(`  Body: ${body.substring(0, 200)}${body.length > 200 ? '...' : ''}`);
 
-  const response = await fetch(url, {
+  const response = await fetchWithProxy(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
@@ -227,26 +244,34 @@ async function registerNewDevice() {
   console.log('  Registrando dispositivo nuevo (accion=registrar)...');
 
   const url = `${BASE_URL_STATIC}/dispositivo.ashx`;
-  const params = {
-    accion: 'registrar',
-    uid: SESSION.uid,
-    plataforma: 'android',
-    tipo_dispositivo: 'android',
-    version: APP_VERSION,
-  };
 
-  const data = await postAPI(url, params);
-  if (data) {
-    saveData('debug_registro.json', data);
-    if (processAuthResponse(data)) {
-      console.log(`  Dispositivo registrado! id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
-      if (data.error === 'uuid ya registrado') {
-        console.log('  (uuid ya existía en el servidor, reutilizando)');
+  // Intentar primero con android; si falla (500), intentar con ios
+  // NOTA: el servidor actualmente da 500 para android pero acepta ios
+  for (const plat of ['android', 'ios']) {
+    const params = {
+      accion: 'registrar',
+      uid: SESSION.uid,
+      plataforma: plat,
+      tipo_dispositivo: plat,
+      version: APP_VERSION,
+    };
+
+    const data = await postAPI(url, params);
+    if (data) {
+      if (plat === 'android') saveData('debug_registro.json', data);
+      if (processAuthResponse(data)) {
+        SESSION.plataforma = plat;
+        console.log(`  Dispositivo registrado (${plat})! id=${SESSION.id_dispositivo}, key=${SESSION.key ? 'OK' : 'vacía'}`);
+        if (data.error === 'uuid ya registrado') {
+          console.log('  (uuid ya existía en el servidor, reutilizando)');
+        }
+        saveSession();
+        return true;
       }
-      saveSession();
-      return true;
+      console.log(`  Registro ${plat} falló: resultado=${data.resultado}, error=${data.error || 'ninguno'}`);
+    } else {
+      console.log(`  Registro ${plat} falló (sin respuesta JSON, posible 500)`);
     }
-    console.log(`  Registro falló: resultado=${data.resultado}, error=${data.error || 'ninguno'}`);
   }
   return false;
 }
@@ -264,11 +289,12 @@ async function accessExistingDevice() {
   console.log('  Accediendo con dispositivo existente (accion=acceso)...');
 
   const url = `${BASE_URL_STATIC}/dispositivo.ashx`;
+  const plat = SESSION.plataforma || 'android';
   const params = {
     accion: 'acceso',
     uid: SESSION.uid,
-    plataforma: 'android',
-    tipo_dispositivo: 'android',
+    plataforma: plat,
+    tipo_dispositivo: plat,
     id_dispositivo: SESSION.id_dispositivo,
     token_push: '',
     version: APP_VERSION,
@@ -293,6 +319,34 @@ async function accessExistingDevice() {
  *   2. Si hay sesión con id_dispositivo pero sin key → accion=acceso
  *   3. Si no hay id_dispositivo → accion=registrar (dispositivo nuevo)
  */
+/**
+ * Valida que las credenciales actuales funcionen haciendo una llamada de prueba.
+ * Retorna true si la key es aceptada por el servidor.
+ */
+async function validateSession() {
+  if (!SESSION.id_dispositivo || !SESSION.key) return false;
+
+  // NOTA: busqueda.ashx y otros endpoints v2 retornan 500 (bug server) cuando se envían credenciales.
+  // Usar envivo/estadisticas.ashx como probe: si responde JSON (cualquier resultado), la key es válida.
+  console.log('  Validando key con envivo/estadisticas.ashx...');
+  const url = `${BASE_URL_DYNAMIC}/envivo/estadisticas.ashx`;
+  const data = await postAPI(url, {
+    accion: 'estadisticas',
+    id: 'probe',
+    id_dispositivo: SESSION.id_dispositivo,
+    key: SESSION.key,
+  });
+
+  // Si el servidor responde JSON (aunque sea error "Faltan parámetros"), la sesión es válida
+  if (data !== null) {
+    console.log(`  Key VALIDA - servidor respondió JSON (resultado: ${data?.resultado})`);
+    saveSession();
+    return true;
+  }
+  console.log('  Key INVALIDA - servidor no respondió JSON (500 o error de red)');
+  return false;
+}
+
 async function registerDevice() {
   console.log('\n--- Autenticación de dispositivo ---');
 
@@ -303,19 +357,10 @@ async function registerDevice() {
     BASE_URL_DYNAMIC = base + 'v2';
   }
 
-  // Caso 1: Sesión completa existente - refrescar key via acceso para asegurar validez
+  // Caso 0: Si la sesión tiene credenciales, validar que funcionen
   if (hasSession && SESSION.id_dispositivo && SESSION.key) {
-    console.log('  Sesión previa encontrada, refrescando key via acceso...');
-    if (!SESSION.uid) {
-      SESSION.uid = generateAndroidId();
-      console.log(`  Nuevo uid generado: ${SESSION.uid}`);
-    }
-    try {
-      if (await accessExistingDevice()) return true;
-    } catch (err) {
-      console.error(`  Error refrescando key: ${err.message}`);
-    }
-    console.log('  Refresco falló, intentando registro nuevo...');
+    if (await validateSession()) return true;
+    console.log('  Key guardada no funciona, intentando renovar...');
   }
 
   // Generar uid si no existe (simula Cordova device.uuid = Android ID)
@@ -324,26 +369,38 @@ async function registerDevice() {
     console.log(`  Nuevo uid generado: ${SESSION.uid}`);
   }
 
-  // Caso 2: Tiene id_dispositivo pero no key → acceso para refrescar key
-  if (hasSession && SESSION.id_dispositivo && !SESSION.key) {
-    console.log('  id_dispositivo existe pero key expirada, intentando acceso...');
+  // Caso 1: Tiene id_dispositivo → acceso para refrescar key
+  if (SESSION.id_dispositivo) {
+    console.log('  Intentando accion=acceso para renovar key...');
     try {
-      if (await accessExistingDevice()) return true;
+      if (await accessExistingDevice()) {
+        // Validar que la key nueva realmente funcione
+        if (await validateSession()) return true;
+        console.log('  Key de acceso no funciona en endpoints de datos.');
+      }
     } catch (err) {
       console.error(`  Error en acceso: ${err.message}`);
     }
-    // Si falla acceso, intentar registrar de nuevo
-    console.log('  Acceso falló, intentando registro nuevo...');
   }
 
-  // Caso 3: No hay id_dispositivo → registrar dispositivo nuevo
+  // Caso 2: Registrar dispositivo nuevo
   try {
-    if (await registerNewDevice()) return true;
+    if (await registerNewDevice()) {
+      if (await validateSession()) return true;
+      console.log('  Key de registro no funciona en endpoints de datos.');
+    }
   } catch (err) {
     console.error(`  Error en registro: ${err.message}`);
   }
 
-  console.log('  Autenticación falló. Continuando sin key (algunos endpoints pueden funcionar)...');
+  // Caso 3: Nada funciona - guiar al usuario
+  console.error('\n  ======================================================');
+  console.error('  ERROR: No se pudo obtener una key válida.');
+  console.error('  El servidor ya no acepta registro de dispositivos nuevos.');
+  console.error('  ');
+  console.error('  SOLUCIÓN: Extraer credenciales de la app del celular.');
+  console.error('  Correr: node extract_phone_key.js');
+  console.error('  ======================================================');
   return false;
 }
 
@@ -367,18 +424,27 @@ async function apiCall(endpoint, params = {}, baseUrl = null) {
   try {
     const data = await postAPI(url, params);
 
-    // Detect expired/invalid session: only for explicit session errors
+    // Detect expired/invalid session: session errors OR "Faltan parámetros" (invalid key)
     // "Error en la consulta" is a server-side data error, NOT a session error
-    const sessionExpired = data && data.resultado === 'error' &&
-      (data.error === 'Sesión caducada' || data.error === 'Sesion caducada');
+    // NOTA: envivo/estadisticas.ashx devuelve "Faltan parámetros" por bug del server, NO por sesión expirada
+    const isEnvivoEndpoint = url.includes('envivo/');
+    const sessionExpired = !isEnvivoEndpoint && data && data.resultado === 'error' &&
+      (data.error === 'Sesión caducada' || data.error === 'Sesion caducada' ||
+       data.error === 'Faltan parámetros' || data.error === 'Faltan parametros');
 
     if (sessionExpired) {
-      console.log('  Sesión inválida/caducada, renovando key...');
+      console.log(`  Sesión inválida (${data.error}), renovando key...`);
       SESSION.key = '';
       if (SESSION.id_dispositivo) {
         await accessExistingDevice();
       } else {
         await registerNewDevice();
+      }
+      if (!SESSION.key) {
+        console.error('  ERROR: No se pudo renovar la key.');
+        console.error('  Necesitas extraer credenciales del celular.');
+        console.error('  Correr: node extract_phone_key.js');
+        return null;
       }
       // Reintentar con la nueva key
       params.key = SESSION.key;
@@ -461,7 +527,7 @@ async function getEstadisticasPartido(idPartido) {
   // NOTA: estadisticas.ashx retorna 404, usar envivo/estadisticas.ashx que funciona
   const data = await apiCall('envivo/estadisticas.ashx', {
     accion: 'estadisticas',
-    id_partido: idPartido,
+    id: idPartido,
   });
   return data;
 }
@@ -505,8 +571,16 @@ async function scrapeCompeticion(comp) {
   console.log(`========================================`);
 
   // 1. Obtener fases y grupos (enviar hex Id raw, NO decodificado)
-  const fasesGrupos = await getFasesGrupos(compId);
+  let fasesGrupos = await getFasesGrupos(compId);
   await sleep(DELAY_MS);
+
+  if (!fasesGrupos) {
+    // Fallback: leer caché si el endpoint falla (bug del servidor)
+    try {
+      fasesGrupos = JSON.parse(fs.readFileSync(path.join(DATA_DIR, `fases_grupos_${compIdSafe}.json`), 'utf8'));
+      console.log(`  Usando caché: fases_grupos_${compIdSafe}.json`);
+    } catch {}
+  }
 
   if (!fasesGrupos) {
     console.log('  No se pudieron obtener fases/grupos');
@@ -533,12 +607,12 @@ async function scrapeCompeticion(comp) {
       const faseId = fase.IdFase || fase.Id;
       const faseName = fase.NombreFase || fase.Nombre || `Fase ${faseId}`;
 
-      // Filtrar fases excluidas
-      const isExcludedPhase = EXCLUDED_PHASES.some(excl =>
-        faseName.toUpperCase().includes(excl.toUpperCase())
+      // Filtrar por whitelist de fases
+      const phaseMatch = INCLUDED_PHASE_GROUPS.find(pg =>
+        faseName.toUpperCase().includes(pg.fase.toUpperCase())
       );
-      if (isExcludedPhase) {
-        console.log(`  [SKIP] Fase excluida: ${faseName}`);
+      if (!phaseMatch) {
+        console.log(`  [SKIP] Fase no incluida: ${faseName}`);
         continue;
       }
 
@@ -547,14 +621,20 @@ async function scrapeCompeticion(comp) {
       const grupos = fase.Grupos || fase.ListaGrupos || [];
       if (grupos.length > 0) {
         for (const grupo of grupos) {
+          const grupoName = grupo.NombreGrupo || grupo.Nombre || 'Default';
+          // Filtrar por whitelist de grupos
+          if (!grupoName.toUpperCase().includes(phaseMatch.grupo.toUpperCase())) {
+            console.log(`  [SKIP] Grupo no incluido: ${faseName} / ${grupoName}`);
+            continue;
+          }
           fasesGruposToScrape.push({
             faseId, faseName, tipoFase,
             grupoId: grupo.IdGrupo || grupo.Id,
-            grupoName: grupo.NombreGrupo || grupo.Nombre || 'Default',
+            grupoName,
           });
         }
       } else {
-        // Fase sin grupos explícitos
+        // Fase sin grupos explícitos - incluir si la fase pasó el filtro
         fasesGruposToScrape.push({ faseId, faseName, tipoFase, grupoId: '', grupoName: 'Único' });
       }
     }
@@ -588,33 +668,48 @@ async function scrapeCompeticion(comp) {
 
       // 2. horariosJornadas - gets ALL matches with full details (teams, dates, venues)
       // Requires id_fase + id_grupo (discovered from APK string table)
-      const horarios = await getHorariosJornadas(faseId, grupoId);
+      let horarios = await getHorariosJornadas(faseId, grupoId);
       if (horarios && horarios.resultado !== 'error') {
         saveData(`horarios_${fileTag}.json`, horarios);
         const numPartidos = horarios.partidos ? horarios.partidos.length : 0;
         console.log(`    Horarios OK: ${numPartidos} partidos`);
       } else {
-        console.log(`    Horarios: sin datos o error`, horarios ? JSON.stringify(horarios).substring(0, 200) : 'null');
+        // Fallback: usar caché
+        try {
+          horarios = JSON.parse(fs.readFileSync(path.join(DATA_DIR, `horarios_${fileTag}.json`), 'utf8'));
+          console.log(`    Horarios: usando caché (${horarios.partidos?.length || 0} partidos)`);
+        } catch { horarios = null; }
+        if (!horarios) console.log(`    Horarios: sin datos o error`, horarios ? JSON.stringify(horarios).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
       // 3. Jornadas (list of matchday dates/IDs)
-      const jornadas = await getJornadas(faseId, grupoId, rondaActual);
+      let jornadas = await getJornadas(faseId, grupoId, rondaActual);
       if (jornadas && jornadas.resultado !== 'error') {
         saveData(`jornadas_${fileTag}.json`, jornadas);
         console.log(`    Jornadas OK: resultado=${jornadas.resultado}`);
       } else {
-        console.log(`    Jornadas: sin datos o error`, jornadas ? JSON.stringify(jornadas).substring(0, 200) : 'null');
+        // Fallback: usar caché
+        try {
+          jornadas = JSON.parse(fs.readFileSync(path.join(DATA_DIR, `jornadas_${fileTag}.json`), 'utf8'));
+          console.log(`    Jornadas: usando caché`);
+        } catch { jornadas = null; }
+        if (!jornadas) console.log(`    Jornadas: sin datos o error`, jornadas ? JSON.stringify(jornadas).substring(0, 200) : 'null');
       }
       await sleep(DELAY_MS);
 
       // 4. Clasificación (standings) - may be empty until matches are played
-      const clasificacion = await getClasificacion(grupoId, tipoFase, '', '');
+      let clasificacion = await getClasificacion(grupoId, tipoFase, '', '');
       if (clasificacion && clasificacion.resultado !== 'error') {
         saveData(`clasificacion_${fileTag}.json`, clasificacion);
         console.log(`    Clasificación OK: resultado=${clasificacion.resultado}`);
       } else {
-        console.log(`    Clasificación: sin datos o error (normal if season not started)`);
+        // Fallback: usar caché
+        try {
+          clasificacion = JSON.parse(fs.readFileSync(path.join(DATA_DIR, `clasificacion_${fileTag}.json`), 'utf8'));
+          console.log(`    Clasificación: usando caché`);
+        } catch { clasificacion = null; }
+        if (!clasificacion) console.log(`    Clasificación: sin datos o error (normal if season not started)`);
       }
       await sleep(DELAY_MS);
 
@@ -724,7 +819,11 @@ async function main() {
   loadDB();
 
   // Paso 0: Registrar dispositivo
-  await registerDevice();
+  const authOk = await registerDevice();
+  if (!authOk) {
+    console.error('\nAbortando: sin credenciales válidas. Correr: node extract_phone_key.js');
+    process.exit(1);
+  }
   console.log(`  URL dinámica activa: ${BASE_URL_DYNAMIC}`);
   await sleep(DELAY_MS);
 
@@ -732,8 +831,18 @@ async function main() {
   // (categoria.ashx con accion=competiciones requiere parámetros adicionales,
   //  pero busqueda.ashx funciona directamente y devuelve las competiciones en "categorias")
   console.log('\n--- Buscando competiciones FEBAMBA ---');
-  const busquedaBA = await buscar('Categoria', 'Buenos Aires');
-  if (busquedaBA) saveData('busqueda_buenos_aires.json', busquedaBA);
+  let busquedaBA = await buscar('Categoria', 'Buenos Aires');
+  if (busquedaBA) {
+    saveData('busqueda_buenos_aires.json', busquedaBA);
+  } else {
+    // Fallback: usar caché si busqueda.ashx no responde (server bug)
+    let cached = null;
+    try { cached = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'busqueda_buenos_aires.json'), 'utf8')); } catch {};
+    if (cached) {
+      console.log('  busqueda.ashx falló — usando caché de busqueda_buenos_aires.json');
+      busquedaBA = cached;
+    }
+  }
   await sleep(DELAY_MS);
 
   // Extraer competiciones de FEBAMBA del resultado de búsqueda
@@ -758,17 +867,17 @@ async function main() {
   // Mostrar las competiciones encontradas y aplicar filtros
   console.log('\n  Competiciones encontradas:');
   for (const comp of febambaComps) {
-    const excluded = EXCLUDED_COMPETITIONS.some(excl =>
-      comp.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase())
+    const included = INCLUDED_COMPETITIONS.some(inc =>
+      comp.NombreCompeticion?.toUpperCase().includes(inc.toUpperCase())
     );
-    const marker = excluded ? '[EXCLUIDA]' : '[OK]';
+    const marker = included ? '[OK]' : '[SKIP]';
     console.log(`  ${marker} [${comp.IdCompeticionCategoria}] ${comp.NombreCompeticion} / ${comp.NombreCategoria}`);
   }
 
-  // Paso 2: Filtrar competiciones excluidas y scrapear las restantes
+  // Paso 2: Filtrar por whitelist y scrapear solo las competencias incluidas
   const targetComps = febambaComps.filter(c =>
-    !EXCLUDED_COMPETITIONS.some(excl =>
-      c.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase())
+    INCLUDED_COMPETITIONS.some(inc =>
+      c.NombreCompeticion?.toUpperCase().includes(inc.toUpperCase())
     )
   );
 

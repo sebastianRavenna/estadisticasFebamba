@@ -17,9 +17,12 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const OUTPUT_FILE = path.join(DATA_DIR, 'dashboard_data.json');
 
-// Filtros (mismos que en scraper_api.js)
-const EXCLUDED_COMPETITIONS = ['FLEX', 'MASTER', 'LA PLATA'];
-const EXCLUDED_PHASES = ['PRE LIGAMETROPOLITANA', 'TORNEO DE CLASIFICACION'];
+// Filtros (mismos que en scraper_api.js) - WHITELIST
+const INCLUDED_COMPETITIONS = ['SUPERIOR 2026', 'FORMATIVAS 2026'];
+const INCLUDED_PHASE_GROUPS = [
+  { fase: 'RECLASIFICACION SUPERIOR', grupo: 'SUR 2' },
+  { fase: 'TORNEO RECLASIFICATORIO',  grupo: 'SUR 2B' },
+];
 
 function parseCabbDate(dateStr) {
   if (!dateStr) return null;
@@ -56,14 +59,13 @@ function buildDashboardData() {
   const matchStatsCount = Object.keys(db.matchStats || {}).length;
   console.log(`BD local: ${matchStatsCount} partidos con box score\n`);
 
-  // Filter to FEBAMBA competitions, excluding unwanted ones
+  // Filter to FEBAMBA competitions, whitelist only
   const allComps = busqueda.categorias.filter(c => {
     const isFebamba = c.NombreDelegacion?.includes('METROPOLITANA') || c.NombreDelegacion?.includes('BUENOS AIRES');
     if (!isFebamba) return false;
-    const isExcluded = EXCLUDED_COMPETITIONS.some(excl =>
-      c.NombreCompeticion?.toUpperCase().includes(excl.toUpperCase())
+    return INCLUDED_COMPETITIONS.some(inc =>
+      c.NombreCompeticion?.toUpperCase().includes(inc.toUpperCase())
     );
-    return !isExcluded;
   });
 
   console.log(`Found ${allComps.length} competitions (after filtering)\n`);
@@ -101,17 +103,21 @@ function buildDashboardData() {
     for (const fase of fg.listaFasesGrupo) {
       const faseName = fase.NombreFase || '';
 
-      // Filter excluded phases
-      const isExcludedPhase = EXCLUDED_PHASES.some(excl =>
-        faseName.toUpperCase().includes(excl.toUpperCase())
+      // Filter phases by whitelist
+      const phaseMatch = INCLUDED_PHASE_GROUPS.find(pg =>
+        faseName.toUpperCase().includes(pg.fase.toUpperCase())
       );
-      if (isExcludedPhase) {
-        console.log(`  [SKIP] ${comp.NombreCompeticion} - Fase excluida: ${faseName}`);
+      if (!phaseMatch) {
+        console.log(`  [SKIP] ${comp.NombreCompeticion} - Fase no incluida: ${faseName}`);
         continue;
       }
 
       const grupos = fase.Grupos || [];
       for (const grupo of grupos) {
+        const grupoName = grupo.NombreGrupo || '';
+        if (!grupoName.toUpperCase().includes(phaseMatch.grupo.toUpperCase())) {
+          continue;
+        }
         const faseTag = (fase.NombreFase || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
         const grupoTag = (grupo.NombreGrupo || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
         const fileTag = `${compIdSafe}_${faseTag}_${grupoTag}`;

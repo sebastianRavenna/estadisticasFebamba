@@ -18,6 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "playwright": "^1.58.2"
+    "https-proxy-agent": "^8.0.0",
+    "playwright": "^1.58.2",
+    "ws": "^8.19.0"
   }
 }
