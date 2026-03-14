@@ -140,6 +140,35 @@ function saveDB() {
   console.log(`  BD local guardada: ${Object.keys(DB.matchStats).length} partidos`);
 }
 
+// Cookie jar simple: almacena cookies del servidor (ASP.NET Session, etc.)
+// El WebView de Cordova maneja cookies automáticamente; Node fetch no.
+// categoria.ashx y otros endpoints /v2/ requieren la cookie de sesión ASP.NET.
+const cookieJar = new Map(); // domain → Map(name → {value, ...})
+
+function storeCookies(url, response) {
+  const domain = new URL(url).hostname;
+  if (!cookieJar.has(domain)) cookieJar.set(domain, new Map());
+  const jar = cookieJar.get(domain);
+  const setCookieHeaders = response.headers.getSetCookie
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie')].filter(Boolean);
+  for (const header of setCookieHeaders) {
+    const [nameVal] = header.split(';');
+    const eqIdx = nameVal.indexOf('=');
+    if (eqIdx < 0) continue;
+    const name = nameVal.slice(0, eqIdx).trim();
+    const value = nameVal.slice(eqIdx + 1).trim();
+    if (name) jar.set(name, value);
+  }
+}
+
+function getCookieHeader(url) {
+  const domain = new URL(url).hostname;
+  const jar = cookieJar.get(domain);
+  if (!jar || jar.size === 0) return '';
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
 /**
  * Hacer una llamada POST con application/x-www-form-urlencoded;charset=UTF-8
  * Replica exactamente el método GetJSON del APK (Angular HttpClient.post)
@@ -153,16 +182,22 @@ async function postAPI(url, params) {
   console.log(`  POST ${url}`);
   console.log(`  Body: ${body.substring(0, 200)}${body.length > 200 ? '...' : ''}`);
 
+  const cookieHeader = getCookieHeader(url);
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  };
+  if (cookieHeader) headers['Cookie'] = cookieHeader;
+
   const response = await fetchWithProxy(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      'Accept': 'application/json, text/plain, */*',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      'Origin': 'https://appaficioncabb.indalweb.net',
-    },
+    headers,
     body: body,
   });
+
+  // Capturar cookies del servidor (ASP.NET Session, etc.)
+  storeCookies(url, response);
 
   if (!response.ok) {
     console.error(`  Error HTTP ${response.status}: ${response.statusText}`);
@@ -678,17 +713,18 @@ async function scrapeCompeticion(comp) {
       }
       await sleep(DELAY_MS);
 
-      // 5. Estadísticas individuales de partidos finalizados (incremental)
-      // Usa envivo/estadisticas.ashx que retorna box scores completos
-      // Buscar partidos terminados tanto en horarios como en jornadas
-      const finalizadosFromHorarios = (horarios && horarios.partidos || [])
-        .filter(p => p.Estado === 'Terminado');
-      const finalizadosFromJornadas = jornadas ? extractPartidos(jornadas)
-        .filter(p => p.Estado === 'Finalizado' || p.Terminado || p.estado === 'finalizado') : [];
+      // 5. Estadísticas individuales de partidos (incremental)
+      // Usa envivo/estadisticas.ashx que retorna box scores completos.
+      // NOTA: cuando categoria.ashx falla (500), los horarios vienen del caché
+      // y pueden tener Estado="No comenzado" aunque el partido ya se jugó.
+      // Por eso intentamos TODOS los partidos del horario: los no jugados
+      // retornarán estadisticas vacías y los jugados tendrán datos reales.
+      const todosDesdeHorarios = (horarios && horarios.partidos || []);
+      const todosDesdeJornadas = jornadas ? extractPartidos(jornadas) : [];
 
       // Combinar y deduplicar por IdPartido
       const allFinalizados = new Map();
-      for (const p of [...finalizadosFromHorarios, ...finalizadosFromJornadas]) {
+      for (const p of [...todosDesdeHorarios, ...todosDesdeJornadas]) {
         const pid = p.IdPartido || p.Id || p.id;
         if (pid) allFinalizados.set(pid, p);
       }
@@ -706,7 +742,11 @@ async function scrapeCompeticion(comp) {
 
         nuevos++;
         const stats = await getEstadisticasPartido(partidoId);
-        if (stats && stats.resultado !== 'error') {
+        // Solo guardar si el partido tiene datos reales de jugadores
+        // (los partidos no jugados devuelven estadisticasequipolocal vacío o error)
+        const tieneJugadores = stats && stats.estadisticas &&
+          Object.keys(stats.estadisticas.estadisticasequipolocal || {}).length > 0;
+        if (tieneJugadores) {
           // Guardar en BD con metadata del partido
           DB.matchStats[partidoId] = {
             ...stats,
@@ -725,7 +765,8 @@ async function scrapeCompeticion(comp) {
         await sleep(DELAY_MS);
       }
 
-      console.log(`    Partidos finalizados: ${totalFinalizados} (${nuevos} nuevos, ${skipped} ya en BD)`);
+      const conStats = Object.values(DB.matchStats).filter(m => m._meta?.faseName === faseName && m._meta?.grupoName === grupoName).length;
+      console.log(`    Partidos procesados: ${allFinalizados.size} total, ${nuevos} nuevos consultados, ${skipped} ya en BD, ${conStats} con stats`);
 
       // NOTA: mejoresJugadores y estadisticasEquipo vía API no funcionan
       // (500 y "Faltan parámetros" respectivamente).
