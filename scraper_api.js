@@ -319,34 +319,6 @@ async function accessExistingDevice() {
  *   2. Si hay sesión con id_dispositivo pero sin key → accion=acceso
  *   3. Si no hay id_dispositivo → accion=registrar (dispositivo nuevo)
  */
-/**
- * Valida que las credenciales actuales funcionen haciendo una llamada de prueba.
- * Retorna true si la key es aceptada por el servidor.
- */
-async function validateSession() {
-  if (!SESSION.id_dispositivo || !SESSION.key) return false;
-
-  // NOTA: busqueda.ashx y otros endpoints v2 retornan 500 (bug server) cuando se envían credenciales.
-  // Usar envivo/estadisticas.ashx como probe: si responde JSON (cualquier resultado), la key es válida.
-  console.log('  Validando key con envivo/estadisticas.ashx...');
-  const url = `${BASE_URL_DYNAMIC}/envivo/estadisticas.ashx`;
-  const data = await postAPI(url, {
-    accion: 'estadisticas',
-    id: 'probe',
-    id_dispositivo: SESSION.id_dispositivo,
-    key: SESSION.key,
-  });
-
-  // Si el servidor responde JSON (aunque sea error "Faltan parámetros"), la sesión es válida
-  if (data !== null) {
-    console.log(`  Key VALIDA - servidor respondió JSON (resultado: ${data?.resultado})`);
-    saveSession();
-    return true;
-  }
-  console.log('  Key INVALIDA - servidor no respondió JSON (500 o error de red)');
-  return false;
-}
-
 async function registerDevice() {
   console.log('\n--- Autenticación de dispositivo ---');
 
@@ -357,49 +329,41 @@ async function registerDevice() {
     BASE_URL_DYNAMIC = base + 'v2';
   }
 
-  // Caso 0: Si la sesión tiene credenciales, validar que funcionen
-  if (hasSession && SESSION.id_dispositivo && SESSION.key) {
-    if (await validateSession()) return true;
-    console.log('  Key guardada no funciona, intentando renovar...');
-  }
-
   // Generar uid si no existe (simula Cordova device.uuid = Android ID)
   if (!SESSION.uid) {
     SESSION.uid = generateAndroidId();
     console.log(`  Nuevo uid generado: ${SESSION.uid}`);
   }
 
-  // Caso 1: Tiene id_dispositivo → acceso para refrescar key
+  // Si tenemos id_dispositivo, SIEMPRE renovar la key via accion=acceso.
+  // NOTA: envivo/estadisticas.ashx devuelve JSON con cualquier key (válida o no),
+  // por eso NO se usa como probe. La única forma confiable de saber si la key
+  // funciona es intentar una llamada real a categoria.ashx o busqueda.ashx,
+  // que sí retornan 500 con keys expiradas. Lo más simple: siempre refrescar.
   if (SESSION.id_dispositivo) {
-    console.log('  Intentando accion=acceso para renovar key...');
+    console.log('  Renovando key via accion=acceso (siempre al inicio)...');
     try {
       if (await accessExistingDevice()) {
-        // Validar que la key nueva realmente funcione
-        if (await validateSession()) return true;
-        console.log('  Key de acceso no funciona en endpoints de datos.');
+        console.log('  Key renovada OK');
+        return true;
       }
+      console.log('  accion=acceso falló, intentando registrar dispositivo nuevo...');
     } catch (err) {
       console.error(`  Error en acceso: ${err.message}`);
     }
   }
 
-  // Caso 2: Registrar dispositivo nuevo
+  // No hay id_dispositivo o acceso falló → registrar dispositivo nuevo
   try {
     if (await registerNewDevice()) {
-      if (await validateSession()) return true;
-      console.log('  Key de registro no funciona en endpoints de datos.');
+      return true;
     }
   } catch (err) {
     console.error(`  Error en registro: ${err.message}`);
   }
 
-  // Caso 3: Nada funciona - guiar al usuario
   console.error('\n  ======================================================');
   console.error('  ERROR: No se pudo obtener una key válida.');
-  console.error('  El servidor ya no acepta registro de dispositivos nuevos.');
-  console.error('  ');
-  console.error('  SOLUCIÓN: Extraer credenciales de la app del celular.');
-  console.error('  Correr: node extract_phone_key.js');
   console.error('  ======================================================');
   return false;
 }
@@ -542,6 +506,7 @@ async function buscar(tipo, texto) {
   const data = await apiCall('busqueda.ashx', {
     accion: `buscar${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`,
     texto: texto,
+    skip: 0,
   });
   return data;
 }
