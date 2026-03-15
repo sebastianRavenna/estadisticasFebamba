@@ -192,8 +192,6 @@ class CABBClient:
                 error_msg = result.get("error", "")
                 is_session_error = error_msg in (
                     "Sesión caducada", "Sesion caducada",
-                    "Faltan parámetros", "Faltan parametros",
-                    "",  # error vacío = key inválida
                 )
                 if is_session_error and not getattr(self, "_retrying", False):
                     logger.warning("Sesión inválida ('%s'), re-registrando...", error_msg)
@@ -223,7 +221,7 @@ class CABBClient:
         return self.api_call(ENDPOINTS["categoria"], {"accion": "competiciones", **extra})
 
     def buscar_categoria(self, texto: str, skip: int = 0) -> dict | None:
-        return self.api_call(ENDPOINTS["categoria"], {
+        return self.api_call(ENDPOINTS["busqueda"], {
             "accion": "buscarCategoria", "texto": texto, "skip": str(skip),
         })
 
