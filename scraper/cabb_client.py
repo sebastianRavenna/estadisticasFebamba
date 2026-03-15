@@ -89,10 +89,12 @@ class CABBClient:
             return True
 
         if not self.uid:
-            self.uid = uuid.uuid4().hex[:16]
+            # uid capturado con mitmproxy del emulador real
+            self.uid = "006c2e08cd134ffd"
 
         if not self.id_dispositivo:
-            self.id_dispositivo = base64.b64encode(os.urandom(64)).decode()
+            # id_dispositivo capturado con mitmproxy (asignado por el servidor)
+            self.id_dispositivo = "9oHkyymjanyD2IGeKO-Iv8v76lE6baoDF6FDGUHZSk3P-Py4yrPIcCtoNw9Cssq-OzRGAW2dmKY0amLORzroSw=="
 
         logger.info("Registrando dispositivo uid=%s", self.uid)
 
