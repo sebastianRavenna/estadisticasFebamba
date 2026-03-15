@@ -519,13 +519,32 @@ async function getHorariosJornadas(idFase, idGrupo) {
   return data;
 }
 
+/**
+ * Decodifica un Id hex-encoded UTF-16LE al string original.
+ * Ej: "5A002B004C00..." → "Z+LhPoi5BzD6ntZ1qSj+oQ=="
+ * El APK almacena los IDs como strings decodificados y los manda tal cual al servidor.
+ * envivo/estadisticas.ashx espera el valor decodificado (500 si se manda el hex crudo).
+ * categoria.ashx y otros endpoints sí aceptan el hex crudo.
+ */
+function decodeHexUTF16LE(hex) {
+  let result = '';
+  for (let i = 0; i + 3 < hex.length; i += 4) {
+    const lo = parseInt(hex.slice(i, i + 2), 16);
+    const hi = parseInt(hex.slice(i + 2, i + 4), 16);
+    result += String.fromCharCode((hi << 8) | lo);
+  }
+  return result;
+}
+
 async function getEstadisticasPartido(idPartido) {
   console.log(`  Obteniendo box score partido ${idPartido.substring(0, 20)}...`);
-  // NOTA: el APK usa el parámetro 'id_partido' (NO 'id') y NO envía 'accion'
+  // NOTA: el APK usa 'id_partido' con el valor DECODIFICADO del hex UTF-16LE
   // Deobfuscado de PevCargarEstadisticas en main.b3d70c09e1bc11b9.js:
   //   params = { id_dispositivo, key, id_partido: partido.IdPartido.toString() }
+  // partido.IdPartido en el app ya viene decodificado; nosotros lo tenemos en hex.
+  const idDecodificado = decodeHexUTF16LE(idPartido);
   const data = await apiCall('envivo/estadisticas.ashx', {
-    id_partido: idPartido,
+    id_partido: idDecodificado,
   });
   return data;
 }
