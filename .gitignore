@@ -9,8 +9,34 @@ data/scraped_data.json
 data/scrape_summary.json
 page_*.html
 apk_analysis/
+apk_extract/
 cabb.apk
+analyze_apk*.js
+test_fasesgrupos.js
+test_scraper_quick.js
+data/test_*.json
+data/debug_*.json
+data/.session.json
+test_*.js
+
+# APK / archivos grandes
+cabb_apk_extracted/
+cabb_app.zip
+cabb_backup.ab
+
+# Logs y scripts de debug
+logcat_*.txt
+mitm_capture_cabb.py
+cdp_extract.js
+debug_ip.js
+extract_phone_key.js
+
+# Python cache
 __pycache__/
 *.pyc
 .session.json
 estadisticas_febamba.db
+
+# Claude worktrees y settings locales
+.claude/worktrees/
+.claude/settings.local.json

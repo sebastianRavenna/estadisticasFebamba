@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node server.js",
     "scrape": "node scraper.js",
     "scrape:api": "node scraper_api.js",
     "dashboard": "npx http-server -p 8080 -o dashboard.html",
@@ -17,6 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "playwright": "^1.58.2"
+    "https-proxy-agent": "^8.0.0",
+    "playwright": "^1.58.2",
+    "ws": "^8.19.0"
   }
 }

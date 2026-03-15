@@ -281,6 +281,7 @@
       padding: 0.8rem 1rem;
       border-bottom: 1px solid rgba(42, 58, 74, 0.5);
       gap: 1rem;
+      flex-wrap: wrap;
     }
 
     .match-card:last-child { border-bottom: none; }
@@ -451,7 +452,10 @@
       <div class="subtitle">Federacion de Basquetbol del Area Metropolitana de Buenos Aires</div>
     </div>
     <div class="header-right">
-      <span class="data-badge" id="dataSource">Datos de muestra</span>
+      <select class="filter-select" id="compSelect" style="max-width:220px;font-size:0.8rem;"></select>
+      <select class="filter-select" id="faseGrupoSelect" style="max-width:200px;font-size:0.8rem;"></select>
+      <span class="data-badge" id="dataSource">Cargando...</span>
+      <button class="data-badge" id="btnScrape" style="cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:var(--bg-hover);">Actualizar datos</button>
       <label class="data-badge" style="cursor:pointer;">
         Cargar JSON
         <input type="file" id="fileInput" accept=".json" style="display:none;">
@@ -462,9 +466,9 @@
   <div class="nav-tabs">
     <div class="nav-tab active" data-section="overview">Resumen</div>
     <div class="nav-tab" data-section="standings">Posiciones</div>
-    <div class="nav-tab" data-section="players">Jugadores</div>
-    <div class="nav-tab" data-section="leaders">Lideres</div>
     <div class="nav-tab" data-section="matches">Partidos</div>
+    <div class="nav-tab" data-section="stats">Estadisticas</div>
+    <div class="nav-tab" data-section="teams">Equipos</div>
     <div class="nav-tab" data-section="compare">Comparar</div>
   </div>
 
@@ -488,9 +492,9 @@
           <div class="sub">ambos equipos</div>
         </div>
         <div class="stat-card">
-          <div class="label">Maximo Anotador</div>
-          <div class="value" id="statTopScorer">-</div>
-          <div class="sub" id="statTopScorerTeam">-</div>
+          <div class="label">Mayor Puntaje</div>
+          <div class="value" id="statTopScore">-</div>
+          <div class="sub" id="statTopScoreDetail">-</div>
         </div>
       </div>
 
@@ -517,9 +521,9 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Top 10 Anotadores</h3></div>
-          <div class="card-body">
-            <div class="chart-container"><canvas id="chartTopScorers"></canvas></div>
+          <div class="card-header"><h3>Proximos Partidos</h3></div>
+          <div class="card-body" style="padding: 0;">
+            <div id="upcomingMatches"></div>
           </div>
         </div>
       </div>
@@ -539,24 +543,14 @@
               <th class="num">PJ</th>
               <th class="num">PG</th>
               <th class="num">PP</th>
-              <th class="num">PF</th>
-              <th class="num">PC</th>
-              <th class="num">Dif</th>
               <th class="num">Pts</th>
-              <th class="num">Racha</th>
             </tr></thead>
             <tbody id="standingsBody"></tbody>
           </table>
         </div>
       </div>
 
-      <div class="grid-2 fade-in" style="margin-top: 1.5rem;">
-        <div class="card">
-          <div class="card-header"><h3>Diferencia de Puntos</h3></div>
-          <div class="card-body">
-            <div class="chart-container"><canvas id="chartDiff"></canvas></div>
-          </div>
-        </div>
+      <div class="fade-in" style="margin-top: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto;">
         <div class="card">
           <div class="card-header"><h3>% Victorias</h3></div>
           <div class="card-body">
@@ -566,78 +560,101 @@
       </div>
     </div>
 
-    <!-- ==================== PLAYERS ==================== -->
-    <div class="section" id="sec-players">
+    <!-- ==================== STATS ==================== -->
+    <div class="section" id="sec-stats">
       <div class="filters fade-in">
-        <input type="text" class="filter-input" id="playerSearch" placeholder="Buscar jugador...">
-        <select class="filter-select" id="teamFilter">
-          <option value="">Todos los equipos</option>
+        <select class="filter-select" id="statsView">
+          <option value="topPlayers">Mejores Jugadores</option>
+          <option value="teamRoster">Plantel (acumulado por equipo)</option>
+          <option value="boxScores">Box Scores (por partido)</option>
         </select>
-        <select class="filter-select" id="posFilter">
-          <option value="">Todas las posiciones</option>
-          <option value="PG">PG - Base</option>
-          <option value="SG">SG - Escolta</option>
-          <option value="SF">SF - Alero</option>
-          <option value="PF">PF - Ala-Pivot</option>
-          <option value="C">C - Pivot</option>
+        <select class="filter-select" id="statsCategory">
+          <option value="valoracion">Valoracion</option>
+          <option value="puntos">Puntos</option>
+          <option value="rebotes">Rebotes</option>
+          <option value="asistencias">Asistencias</option>
         </select>
+        <select class="filter-select" id="boxScoreMatch" style="display:none;">
+          <option value="">Seleccionar partido...</option>
+        </select>
+        <select class="filter-select" id="rosterTeamSelect" style="display:none;"></select>
       </div>
 
-      <div class="card fade-in">
-        <div class="card-header">
-          <h3>Estadisticas de Jugadores</h3>
-          <span style="color: var(--text-muted); font-size: 0.75rem;" id="playerCount"></span>
+      <!-- Top Players -->
+      <div id="statsTopPlayers" class="fade-in">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="topPlayersTitle">Mejores Jugadores</h3>
+            <span style="color: var(--text-muted); font-size: 0.75rem;" id="topPlayersCount"></span>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="topPlayersList"></div>
+          </div>
         </div>
-        <div class="card-body" style="padding: 0; overflow-x: auto;">
-          <table class="player-table" id="playerTable">
-            <thead><tr>
-              <th class="left" data-sort="name">Jugador</th>
-              <th data-sort="team">Equipo</th>
-              <th data-sort="position">Pos</th>
-              <th data-sort="gp">PJ</th>
-              <th data-sort="min">Min</th>
-              <th data-sort="pts">Pts</th>
-              <th data-sort="reb">Reb</th>
-              <th data-sort="ast">Ast</th>
-              <th data-sort="stl">Rob</th>
-              <th data-sort="blk">Tap</th>
-              <th data-sort="to">Per</th>
-              <th data-sort="fg_pct">TC%</th>
-              <th data-sort="tp_pct">3P%</th>
-              <th data-sort="ft_pct">TL%</th>
-            </tr></thead>
-            <tbody id="playerBody"></tbody>
-          </table>
+      </div>
+
+      <!-- Team Roster (Accumulated Stats) -->
+      <div id="statsTeamRoster" class="fade-in" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="rosterTitle">Plantel - Estadisticas Acumuladas</h3>
+            <span style="color: var(--text-muted); font-size: 0.75rem;" id="rosterInfo"></span>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="rosterContent"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box Scores -->
+      <div id="statsBoxScores" class="fade-in" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="boxScoreTitle">Box Score</h3>
+          </div>
+          <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <div id="boxScoreContent"></div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ==================== LEADERS ==================== -->
-    <div class="section" id="sec-leaders">
-      <div class="grid-3 fade-in">
+    <!-- ==================== TEAMS ==================== -->
+    <div class="section" id="sec-teams">
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3>Estadisticas por Equipo</h3>
+          <span style="color: var(--text-muted); font-size: 0.75rem;" id="teamCount"></span>
+        </div>
+        <div class="card-body" style="padding: 0; overflow-x: auto;">
+          <table class="standings-table" id="teamsTable">
+            <thead><tr>
+              <th class="num">#</th>
+              <th>Equipo</th>
+              <th class="num">PJ</th>
+              <th class="num">PG</th>
+              <th class="num">PP</th>
+              <th class="num">PF</th>
+              <th class="num">PC</th>
+              <th class="num">Dif</th>
+              <th class="num">PPP</th>
+            </tr></thead>
+            <tbody id="teamsBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="grid-2 fade-in" style="margin-top: 1.5rem;">
         <div class="card">
-          <div class="card-header"><h3>Puntos</h3></div>
-          <div class="card-body" id="leaderPts"></div>
+          <div class="card-header"><h3>Puntos a Favor vs En Contra</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartTeamPfPc"></canvas></div>
+          </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Rebotes</h3></div>
-          <div class="card-body" id="leaderReb"></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Asistencias</h3></div>
-          <div class="card-body" id="leaderAst"></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Robos</h3></div>
-          <div class="card-body" id="leaderStl"></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Tapas</h3></div>
-          <div class="card-body" id="leaderBlk"></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>% Triples</h3></div>
-          <div class="card-body" id="leaderTp"></div>
+          <div class="card-header"><h3>Promedio de Puntos por Partido</h3></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="chartTeamPpp"></canvas></div>
+          </div>
         </div>
       </div>
     </div>
@@ -663,23 +680,17 @@
         </div>
       </div>
 
-      <div class="card fade-in" style="margin-top: 1.5rem;">
-        <div class="card-header"><h3>Puntos por Fecha</h3></div>
-        <div class="card-body">
-          <div class="chart-container chart-container-lg"><canvas id="chartMatchScores"></canvas></div>
-        </div>
-      </div>
     </div>
 
     <!-- ==================== COMPARE ==================== -->
     <div class="section" id="sec-compare">
       <div class="card fade-in">
-        <div class="card-header"><h3>Comparar Jugadores</h3></div>
+        <div class="card-header"><h3>Comparar Equipos</h3></div>
         <div class="card-body">
           <div class="compare-select-row">
-            <select class="filter-select" id="comparePlayer1" style="flex:1;"></select>
+            <select class="filter-select" id="compareTeam1" style="flex:1;"></select>
             <span class="compare-vs">VS</span>
-            <select class="filter-select" id="comparePlayer2" style="flex:1;"></select>
+            <select class="filter-select" id="compareTeam2" style="flex:1;"></select>
           </div>
           <div class="grid-2">
             <div class="chart-container chart-container-lg">
@@ -700,25 +711,267 @@
     let charts = {};
     let currentSort = { key: 'pts', dir: -1 };
 
-    // Load sample data inline (will be replaced when JSON is loaded)
+    // Check if running from server (API available) or static file
+    const IS_SERVER = location.port && !location.protocol.startsWith('file');
+    let COMPETITIONS = [];
+
     async function loadData() {
-      try {
-        const resp = await fetch('./data/sample_data.json');
-        DATA = await resp.json();
-      } catch {
-        // Fallback: use inline minimal data if fetch fails
-        console.warn('Could not load sample_data.json, using inline fallback');
-        DATA = getInlineData();
+      if (IS_SERVER) {
+        await loadFromAPI();
+      } else {
+        await loadFromFile();
       }
+    }
+
+    // Load from server API
+    async function loadFromAPI() {
+      try {
+        // Load competitions list
+        const compResp = await fetch('/api/competitions');
+        const compData = await compResp.json();
+        COMPETITIONS = compData.competitions || [];
+        populateCompSelect();
+
+        // Load data for default/selected competition
+        const compSelect = document.getElementById('compSelect');
+        const compId = compSelect.value;
+        if (compId) {
+          await loadCompetitionData(compId);
+        } else if (COMPETITIONS.length > 0) {
+          const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+          compSelect.value = firstWithData.id;
+          await loadCompetitionData(firstWithData.id);
+        } else {
+          document.getElementById('dataSource').textContent = 'Sin datos - Ejecutar scraper';
+          DATA = getInlineData();
+          initDashboard();
+        }
+      } catch (err) {
+        console.warn('API not available, falling back to static file:', err.message);
+        await loadFromFile();
+      }
+    }
+
+    async function loadCompetitionData(compId, faseTag, grupoTag) {
+      try {
+        let url = `/api/data?comp=${compId}`;
+        if (faseTag && grupoTag) url += `&fase=${faseTag}&grupo=${grupoTag}`;
+        const resp = await fetch(url);
+        DATA = await resp.json();
+
+        if (DATA.error) {
+          document.getElementById('dataSource').textContent = DATA.error;
+          DATA = getInlineData();
+        } else {
+          const badge = document.getElementById('dataSource');
+          badge.textContent = `Datos: ${DATA.competition?.name || compId}`;
+          badge.style.borderColor = 'var(--win)';
+          badge.style.color = 'var(--win)';
+
+          // Populate fase/grupo selector
+          if (DATA.fases && DATA.fases.length > 0) {
+            populateFaseGrupoSelect(DATA.fases, faseTag, grupoTag);
+          }
+        }
+        initDashboard();
+      } catch (err) {
+        console.error('Error loading competition data:', err);
+        document.getElementById('dataSource').textContent = 'Error cargando datos';
+      }
+    }
+
+    function populateCompSelect() {
+      const select = document.getElementById('compSelect');
+      select.innerHTML = '';
+      if (COMPETITIONS.length === 0) {
+        select.innerHTML = '<option value="">Sin competiciones</option>';
+        return;
+      }
+      for (const c of COMPETITIONS) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name} - ${c.category}`.substring(0, 40);
+        if (!c.hasData) opt.textContent += ' (sin datos)';
+        select.appendChild(opt);
+      }
+    }
+
+    function populateFaseGrupoSelect(fases, currentFase, currentGrupo) {
+      const select = document.getElementById('faseGrupoSelect');
+      select.innerHTML = '';
+      for (const f of fases) {
+        const opt = document.createElement('option');
+        opt.value = `${f.faseTag}|${f.grupoTag}`;
+        opt.textContent = `${f.faseName} / ${f.grupoName}`.substring(0, 35);
+        if (currentFase === f.faseTag && currentGrupo === f.grupoTag) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    // Competition selector change
+    document.getElementById('compSelect').addEventListener('change', function() {
+      if (!this.value) return;
+      if (IS_SERVER) {
+        loadCompetitionData(this.value);
+      } else {
+        loadStaticCompetition(this.value);
+      }
+    });
+
+    // Fase/grupo selector change
+    document.getElementById('faseGrupoSelect').addEventListener('change', function() {
+      const compId = document.getElementById('compSelect').value;
+      const [faseTag, grupoTag] = this.value.split('|');
+      if (!compId || !faseTag || !grupoTag) return;
+      if (IS_SERVER) {
+        loadCompetitionData(compId, faseTag, grupoTag);
+      } else {
+        loadStaticCompetition(compId, faseTag, grupoTag);
+      }
+    });
+
+    // Scrape button
+    document.getElementById('btnScrape').addEventListener('click', async function() {
+      if (!IS_SERVER) { alert('El scraper solo funciona con server.js'); return; }
+      this.textContent = 'Scrapeando...';
+      this.disabled = true;
+      try {
+        await fetch('/api/scrape', { method: 'POST' });
+        // Poll status
+        const poll = setInterval(async () => {
+          const r = await fetch('/api/scrape/status');
+          const s = await r.json();
+          if (!s.running) {
+            clearInterval(poll);
+            this.textContent = 'Actualizar datos';
+            this.disabled = false;
+            await loadFromAPI();
+          }
+        }, 5000);
+      } catch (err) {
+        this.textContent = 'Error';
+        this.disabled = false;
+      }
+    });
+
+    // All static data loaded from dashboard_data.json
+    let STATIC_DATA = null;
+
+    // Load from static file (fallback)
+    async function loadFromFile() {
+      try {
+        const resp = await fetch('./data/dashboard_data.json');
+        if (!resp.ok) throw new Error('Not found');
+        STATIC_DATA = await resp.json();
+      } catch {
+        console.warn('Could not load dashboard_data.json, using inline fallback');
+        STATIC_DATA = null;
+        DATA = getInlineData();
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        initDashboard();
+        return;
+      }
+
+      // Populate competitions from static data
+      COMPETITIONS = (STATIC_DATA.competitions || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        delegacion: c.delegacion,
+        hasData: c.fases && c.fases.some(f => f.hasData),
+      }));
+      populateCompSelect();
+
+      // Load default competition: SUPERIOR 2026, default fase: Reclasificacion Sur 2
+      const firstWithData = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+      if (firstWithData) {
+        document.getElementById('compSelect').value = firstWithData.id;
+        // Try to find "Reclasificacion Sur 2" as default fase
+        const comp = STATIC_DATA.competitions.find(c => String(c.id) === String(firstWithData.id));
+        const defaultFase = comp?.fases?.find(f =>
+          f.grupoName?.toUpperCase().includes('SUR 2') ||
+          (f.faseName?.toUpperCase().includes('SUR') && f.grupoName?.includes('2'))
+        );
+        if (defaultFase) {
+          loadStaticCompetition(firstWithData.id, defaultFase.faseTag, defaultFase.grupoTag);
+        } else {
+          loadStaticCompetition(firstWithData.id);
+        }
+      } else {
+        document.getElementById('dataSource').textContent = 'Sin datos';
+        DATA = getInlineData();
+        initDashboard();
+      }
+    }
+
+    function loadStaticCompetition(compId, faseTag, grupoTag) {
+      if (!STATIC_DATA) return;
+      const comp = STATIC_DATA.competitions.find(c => String(c.id) === String(compId));
+      if (!comp || !comp.fases || comp.fases.length === 0) {
+        DATA = getInlineData();
+        DATA.competition = { name: comp?.name || '', category: comp?.category || '', season: '2026' };
+        document.getElementById('dataSource').textContent = `${comp?.name || 'Sin datos'} (sin datos)`;
+        initDashboard();
+        return;
+      }
+
+      // Find the requested fase/grupo or use first one
+      let fase = comp.fases[0];
+      if (faseTag && grupoTag) {
+        const found = comp.fases.find(f => f.faseTag === faseTag && f.grupoTag === grupoTag);
+        if (found) fase = found;
+      }
+
+      // Build DATA in the same format the dashboard expects
+      DATA = {
+        meta: STATIC_DATA.meta,
+        competition: {
+          id: comp.id,
+          name: comp.name,
+          category: comp.category,
+          season: comp.season || '2026',
+          delegacion: comp.delegacion,
+          fase: fase.faseName,
+          grupo: fase.grupoName,
+          tipoFase: fase.tipoFase,
+        },
+        standings: fase.standings || [],
+        matches: fase.matches || [],
+        schedule: fase.schedule || [],
+        matchStats: fase.matchStats || [],
+        topPlayers: fase.topPlayers || null,
+        teamStats: fase.teamStats || [],
+        players: [],
+        teamColors: {},
+        fases: comp.fases.map(f => ({
+          faseName: f.faseName,
+          grupoName: f.grupoName,
+          tipoFase: f.tipoFase,
+          faseTag: f.faseTag,
+          grupoTag: f.grupoTag,
+          hasClasificacion: f.standings && f.standings.length > 0,
+          hasJornadas: f.schedule && f.schedule.length > 0,
+        })),
+      };
+
+      populateFaseGrupoSelect(DATA.fases, fase.faseTag, fase.grupoTag);
+      const badge = document.getElementById('dataSource');
+      badge.textContent = `Datos: ${comp.name}`;
+      badge.style.borderColor = 'var(--win)';
+      badge.style.color = 'var(--win)';
       initDashboard();
     }
 
     function getInlineData() {
       return {
-        competition: { name: "FEBAMBA 2025", category: "Primera Division", season: "2025" },
+        competition: { name: "FEBAMBA 2026", category: "Primera Division", season: "2026" },
         standings: [],
         players: [],
         matches: [],
+        schedule: [],
+        matchStats: [],
+        topPlayers: null,
+        teamStats: [],
         teamColors: {}
       };
     }
@@ -731,35 +984,33 @@
       reader.onload = function(ev) {
         try {
           const loaded = JSON.parse(ev.target.result);
-          // Support both scraped_data.json format and sample_data.json format
-          if (loaded.standings || loaded.players) {
+          if (loaded.competitions) {
+            // Multi-competition format (dashboard_data.json)
+            STATIC_DATA = loaded;
+            COMPETITIONS = (loaded.competitions || []).map(c => ({
+              id: c.id, name: c.name, category: c.category, delegacion: c.delegacion,
+              hasData: c.fases && c.fases.some(f => f.hasData),
+            }));
+            populateCompSelect();
+            const first = COMPETITIONS.find(c => c.hasData) || COMPETITIONS[0];
+            if (first) {
+              document.getElementById('compSelect').value = first.id;
+              loadStaticCompetition(first.id);
+            }
+          } else if (loaded.standings || loaded.matches) {
+            // Single competition format
             DATA = loaded;
-          } else if (loaded.competitions) {
-            // Convert scraped format
-            DATA = convertScrapedData(loaded);
+            initDashboard();
           }
-          document.getElementById('dataSource').textContent = 'Datos cargados: ' + file.name;
+          document.getElementById('dataSource').textContent = 'Cargado: ' + file.name;
           document.getElementById('dataSource').style.borderColor = 'var(--win)';
           document.getElementById('dataSource').style.color = 'var(--win)';
-          initDashboard();
         } catch (err) {
           alert('Error parsing JSON: ' + err.message);
         }
       };
       reader.readAsText(file);
     });
-
-    function convertScrapedData(scraped) {
-      // Convert scraped_data.json from scraper.js into dashboard format
-      // This is a placeholder - actual conversion depends on scraped HTML structure
-      return {
-        competition: { name: "Datos Scrapeados", category: "", season: "" },
-        standings: [],
-        players: [],
-        matches: [],
-        teamColors: {}
-      };
-    }
 
     // ========================================
     // INIT
@@ -768,9 +1019,9 @@
       if (!DATA) return;
       renderOverview();
       renderStandings();
-      renderPlayers();
-      renderLeaders();
+      renderTeams();
       renderMatches();
+      renderStats();
       renderCompare();
     }
 
@@ -788,118 +1039,157 @@
     });
 
     // ========================================
+    // HELPER: compute team stats from match results
+    // ========================================
+    function computeTeamStats() {
+      const m = DATA.matches || [];
+      const teams = {};
+      m.forEach(match => {
+        const hasScore = match.homeScore && match.homeScore !== '-' && match.homeScore !== null && Number(match.homeScore) >= 0;
+        if (!hasScore) return;
+        const hs = Number(match.homeScore), as = Number(match.awayScore);
+        if (isNaN(hs) || isNaN(as) || (hs === 0 && as === 0)) return;
+
+        if (!teams[match.home]) teams[match.home] = { name: match.home, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0 };
+        if (!teams[match.away]) teams[match.away] = { name: match.away, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0 };
+
+        const h = teams[match.home], a = teams[match.away];
+        h.pj++; a.pj++;
+        h.pf += hs; h.pc += as;
+        a.pf += as; a.pc += hs;
+        if (hs > as) { h.pg++; a.pp++; } else { a.pg++; h.pp++; }
+      });
+
+      return Object.values(teams).map(t => ({
+        ...t,
+        dif: t.pf - t.pc,
+        ppp: t.pj ? (t.pf / t.pj).toFixed(1) : 0,
+        pcp: t.pj ? (t.pc / t.pj).toFixed(1) : 0,
+      })).sort((a, b) => b.pg - a.pg || b.dif - a.dif);
+    }
+
+    function isPlayed(match) {
+      return match.status === 'Terminado' || (match.homeScore && match.homeScore !== '-' && match.homeScore !== null && Number(match.homeScore) > 0);
+    }
+
+    function matchCard(match, showVenue) {
+      const hasScore = isPlayed(match);
+      const hs = Number(match.homeScore), as = Number(match.awayScore);
+      const homeWin = hasScore && hs > as;
+      const awayWin = hasScore && as > hs;
+      const timeStr = match.time ? match.time.substring(0, 5) : '';
+      const statusColor = match.status === 'Terminado' ? 'var(--win)' : match.status === 'No comenzado' ? 'var(--text-muted)' : 'var(--accent)';
+
+      return `<div class="match-card">
+        <div class="match-date">
+          <div class="match-day">Fecha ${match.matchday}</div>
+          ${match.date || ''}${timeStr ? ' - ' + timeStr : ''}
+          <div style="font-size:0.7rem;color:${statusColor}">${match.status || ''}</div>
+        </div>
+        <div class="match-teams">
+          <div class="match-team home" style="font-weight:${homeWin ? '700' : '400'}">${shortTeamName(match.home)}</div>
+          <div class="match-score">
+            ${hasScore
+              ? `<span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
+                 <span style="color:var(--text-muted)">-</span>
+                 <span class="${awayWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>`
+              : `<span style="color:var(--text-muted)">vs</span>`}
+          </div>
+          <div class="match-team away" style="font-weight:${awayWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
+        </div>
+        ${showVenue && match.venue ? `<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;width:100%;padding:0.2rem 0 0;">${match.venue}</div>` : ''}
+      </div>`;
+    }
+
+    // ========================================
     // OVERVIEW
     // ========================================
     function renderOverview() {
       const s = DATA.standings || [];
-      const p = DATA.players || [];
       const m = DATA.matches || [];
+      const sched = DATA.schedule || [];
+      const played = m.filter(isPlayed);
 
-      document.getElementById('statTeams').textContent = s.length;
+      // Count unique teams
+      const teamSet = new Set();
+      m.forEach(x => { if (x.home) teamSet.add(x.home); if (x.away) teamSet.add(x.away); });
+      const teamCount = s.length || teamSet.size || '-';
+
+      document.getElementById('statTeams').textContent = teamCount;
       document.getElementById('statCompetition').textContent = DATA.competition?.name || '';
-      document.getElementById('statMatches').textContent = m.length;
+      document.getElementById('statMatches').textContent = played.length ? `${played.length} / ${m.length}` : (m.length || '-');
+      document.getElementById('statMatchdays').textContent = played.length ? 'jugados / total' : (m.length ? 'programados' : '-');
 
-      const matchdays = [...new Set(m.map(x => x.matchday))];
-      document.getElementById('statMatchdays').textContent = matchdays.length + ' fechas';
+      // Avg points per game
+      const totalPts = played.reduce((sum, x) => sum + (Number(x.homeScore) || 0) + (Number(x.awayScore) || 0), 0);
+      document.getElementById('statAvgPts').textContent = played.length ? (totalPts / played.length).toFixed(1) : '-';
 
-      const totalPts = m.reduce((sum, x) => sum + (x.homeScore || 0) + (x.awayScore || 0), 0);
-      document.getElementById('statAvgPts').textContent = m.length ? (totalPts / m.length).toFixed(1) : '-';
-
-      const topScorer = p.sort((a, b) => b.pts - a.pts)[0];
-      if (topScorer) {
-        document.getElementById('statTopScorer').textContent = topScorer.pts.toFixed(1) + ' ppg';
-        document.getElementById('statTopScorerTeam').textContent = topScorer.name;
+      // Highest single-game score
+      let topScore = null;
+      played.forEach(x => {
+        const hs = Number(x.homeScore), as = Number(x.awayScore);
+        if (hs > (topScore?.score || 0)) topScore = { score: hs, team: x.home, vs: x.away, match: x };
+        if (as > (topScore?.score || 0)) topScore = { score: as, team: x.away, vs: x.home, match: x };
+      });
+      if (topScore) {
+        document.getElementById('statTopScore').textContent = topScore.score + ' pts';
+        document.getElementById('statTopScoreDetail').textContent = shortTeamName(topScore.team);
       }
 
       // Mini standings
-      let standingsHtml = '<table class="standings-table"><thead><tr><th class="num">Pos</th><th>Equipo</th><th class="num">PJ</th><th class="num">PG</th><th class="num">PP</th><th class="num">Pts</th></tr></thead><tbody>';
-      s.slice(0, 8).forEach(t => {
-        const cls = t.pos <= 8 ? 'playoff' : '';
-        standingsHtml += `<tr class="${cls}">
-          <td class="num"><span class="pos-badge pos-${t.pos <= 3 ? t.pos : ''}">${t.pos}</span></td>
-          <td class="team-name">${shortTeamName(t.team)}</td>
-          <td class="num">${t.pj}</td>
-          <td class="num">${t.pg}</td>
-          <td class="num">${t.pp}</td>
-          <td class="num"><strong>${t.pts}</strong></td>
-        </tr>`;
-      });
-      standingsHtml += '</tbody></table>';
+      let standingsHtml = '';
+      if (s.length > 0) {
+        standingsHtml = '<table class="standings-table"><thead><tr><th class="num">Pos</th><th>Equipo</th><th class="num">PJ</th><th class="num">PG</th><th class="num">PP</th><th class="num">Pts</th></tr></thead><tbody>';
+        s.slice(0, 8).forEach(t => {
+          standingsHtml += `<tr class="playoff">
+            <td class="num"><span class="pos-badge pos-${t.pos <= 3 ? t.pos : ''}">${t.pos}</span></td>
+            <td class="team-name">${shortTeamName(t.team)}</td>
+            <td class="num">${t.pj}</td><td class="num">${t.pg}</td><td class="num">${t.pp}</td>
+            <td class="num"><strong>${t.pts}</strong></td>
+          </tr>`;
+        });
+        standingsHtml += '</tbody></table>';
+      } else {
+        standingsHtml = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de posiciones</div>';
+      }
       document.getElementById('miniStandings').innerHTML = standingsHtml;
 
-      // Recent matches
-      let matchesHtml = '';
-      m.slice(0, 6).forEach(match => {
-        const homeWin = match.homeScore > match.awayScore;
-        matchesHtml += `<div class="match-card">
-          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
-          <div class="match-teams">
-            <div class="match-team home">${shortTeamName(match.home)}</div>
-            <div class="match-score">
-              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
-              <span style="color:var(--text-muted)">-</span>
-              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
-            </div>
-            <div class="match-team away">${shortTeamName(match.away)}</div>
-          </div>
-        </div>`;
-      });
-      document.getElementById('recentMatches').innerHTML = matchesHtml;
+      // Recent results (only played matches, most recent first)
+      let recentHtml = '';
+      if (played.length > 0) {
+        const sorted = [...played].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
+        sorted.slice(0, 6).forEach(match => { recentHtml += matchCard(match, false); });
+      } else {
+        recentHtml = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin resultados aun</div>';
+      }
+      document.getElementById('recentMatches').innerHTML = recentHtml;
 
-      // Charts
-      renderTeamPtsChart();
-      renderTopScorersChart();
-    }
+      // Upcoming matches
+      let upcomingHtml = '';
+      const upcoming = m.filter(x => !isPlayed(x)).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+      if (upcoming.length > 0) {
+        upcoming.slice(0, 6).forEach(match => { upcomingHtml += matchCard(match, false); });
+      } else {
+        upcomingHtml = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin partidos pendientes</div>';
+      }
+      document.getElementById('upcomingMatches').innerHTML = upcomingHtml;
 
-    function renderTeamPtsChart() {
-      const s = DATA.standings || [];
-      if (!s.length) return;
-
-      destroyChart('chartTeamPts');
-      charts.chartTeamPts = new Chart(document.getElementById('chartTeamPts'), {
-        type: 'bar',
-        data: {
-          labels: s.map(t => shortTeamName(t.team)),
-          datasets: [
-            {
-              label: 'Puntos a Favor',
-              data: s.map(t => t.pf),
-              backgroundColor: 'rgba(78, 205, 196, 0.7)',
-              borderColor: 'rgba(78, 205, 196, 1)',
-              borderWidth: 1
-            },
-            {
-              label: 'Puntos en Contra',
-              data: s.map(t => t.pc),
-              backgroundColor: 'rgba(255, 107, 107, 0.7)',
-              borderColor: 'rgba(255, 107, 107, 1)',
-              borderWidth: 1
-            }
-          ]
-        },
-        options: chartOptions('Puntos')
-      });
-    }
-
-    function renderTopScorersChart() {
-      const p = [...(DATA.players || [])].sort((a, b) => b.pts - a.pts).slice(0, 10);
-      if (!p.length) return;
-
-      destroyChart('chartTopScorers');
-      charts.chartTopScorers = new Chart(document.getElementById('chartTopScorers'), {
-        type: 'bar',
-        data: {
-          labels: p.map(x => x.name.split(' ').pop()),
-          datasets: [{
-            label: 'PPG',
-            data: p.map(x => x.pts),
-            backgroundColor: p.map((_, i) => i === 0 ? 'rgba(255, 107, 53, 0.8)' : 'rgba(255, 107, 53, 0.4)'),
-            borderColor: 'rgba(255, 107, 53, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: { ...chartOptions('PPG'), indexAxis: 'y' }
-      });
+      // Chart: PF vs PC from computed team stats
+      const teamStats = computeTeamStats();
+      if (teamStats.length > 0) {
+        destroyChart('chartTeamPts');
+        charts.chartTeamPts = new Chart(document.getElementById('chartTeamPts'), {
+          type: 'bar',
+          data: {
+            labels: teamStats.map(t => shortTeamName(t.name)),
+            datasets: [
+              { label: 'PF', data: teamStats.map(t => t.pf), backgroundColor: 'rgba(78, 205, 196, 0.7)', borderColor: 'rgba(78, 205, 196, 1)', borderWidth: 1 },
+              { label: 'PC', data: teamStats.map(t => t.pc), backgroundColor: 'rgba(255, 107, 107, 0.7)', borderColor: 'rgba(255, 107, 107, 1)', borderWidth: 1 }
+            ]
+          },
+          options: chartOptions('Puntos')
+        });
+      }
     }
 
     // ========================================
@@ -910,50 +1200,27 @@
       document.getElementById('standingsTitle').textContent =
         (DATA.competition?.name || 'Tabla de Posiciones') + ' - Posiciones';
 
+      if (!s.length) {
+        document.getElementById('standingsBody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos de posiciones para este grupo</td></tr>';
+        return;
+      }
+
       let html = '';
       s.forEach(t => {
         const cls = t.pos <= 8 ? 'playoff' : (t.pos >= s.length - 1 ? 'relegation' : '');
-        const streakCls = t.streak?.startsWith('W') ? 'streak-w' : 'streak-l';
-        const diffCls = t.dif > 0 ? 'diff-pos' : (t.dif < 0 ? 'diff-neg' : '');
         html += `<tr class="${cls}">
           <td class="num"><span class="pos-badge pos-${t.pos <= 3 ? t.pos : ''}">${t.pos}</span></td>
           <td class="team-name">${t.team}</td>
           <td class="num">${t.pj}</td>
           <td class="num">${t.pg}</td>
           <td class="num">${t.pp}</td>
-          <td class="num">${t.pf}</td>
-          <td class="num">${t.pc}</td>
-          <td class="num ${diffCls}">${t.dif > 0 ? '+' : ''}${t.dif}</td>
           <td class="num"><strong>${t.pts}</strong></td>
-          <td class="num"><span class="${streakCls}">${t.streak || ''}</span></td>
         </tr>`;
       });
       document.getElementById('standingsBody').innerHTML = html;
 
-      // Charts
-      renderDiffChart();
+      // Chart: % Victorias
       renderWinPctChart();
-    }
-
-    function renderDiffChart() {
-      const s = DATA.standings || [];
-      if (!s.length) return;
-
-      destroyChart('chartDiff');
-      charts.chartDiff = new Chart(document.getElementById('chartDiff'), {
-        type: 'bar',
-        data: {
-          labels: s.map(t => shortTeamName(t.team)),
-          datasets: [{
-            label: 'Diferencia',
-            data: s.map(t => t.dif),
-            backgroundColor: s.map(t => t.dif >= 0 ? 'rgba(78, 205, 196, 0.7)' : 'rgba(255, 107, 107, 0.7)'),
-            borderColor: s.map(t => t.dif >= 0 ? 'rgba(78, 205, 196, 1)' : 'rgba(255, 107, 107, 1)'),
-            borderWidth: 1
-          }]
-        },
-        options: chartOptions('Diferencia de puntos')
-      });
     }
 
     function renderWinPctChart() {
@@ -964,13 +1231,14 @@
       charts.chartWinPct = new Chart(document.getElementById('chartWinPct'), {
         type: 'doughnut',
         data: {
-          labels: s.slice(0, 6).map(t => shortTeamName(t.team)),
+          labels: s.slice(0, 8).map(t => shortTeamName(t.team)),
           datasets: [{
-            data: s.slice(0, 6).map(t => ((t.pg / t.pj) * 100).toFixed(1)),
+            data: s.slice(0, 8).map(t => t.pj ? ((t.pg / t.pj) * 100).toFixed(1) : 0),
             backgroundColor: [
               'rgba(255, 107, 53, 0.8)', 'rgba(78, 205, 196, 0.8)',
               'rgba(255, 230, 109, 0.8)', 'rgba(107, 137, 255, 0.8)',
-              'rgba(255, 107, 170, 0.8)', 'rgba(170, 107, 255, 0.8)'
+              'rgba(255, 107, 170, 0.8)', 'rgba(170, 107, 255, 0.8)',
+              'rgba(140, 200, 100, 0.8)', 'rgba(200, 140, 100, 0.8)'
             ],
             borderWidth: 0
           }]
@@ -980,136 +1248,72 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { position: 'right', labels: { color: '#8899aa', font: { size: 11 } } },
-            tooltip: {
-              callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}%` }
-            }
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}%` } }
           }
         }
       });
     }
 
     // ========================================
-    // PLAYERS
+    // TEAMS (computed from match results)
     // ========================================
-    function renderPlayers() {
-      const p = DATA.players || [];
-      if (!p.length) return;
+    function renderTeams() {
+      const teamStats = computeTeamStats();
+      document.getElementById('teamCount').textContent = teamStats.length + ' equipos';
 
-      // Populate team filter
-      const teams = [...new Set(p.map(x => x.team))].sort();
-      const teamSel = document.getElementById('teamFilter');
-      const matchTeamSel = document.getElementById('matchTeamFilter');
-      teamSel.innerHTML = '<option value="">Todos los equipos</option>';
-      matchTeamSel.innerHTML = '<option value="">Todos los equipos</option>';
-      teams.forEach(t => {
-        teamSel.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
-        matchTeamSel.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
-      });
-
-      renderPlayerTable();
-
-      // Filters
-      document.getElementById('playerSearch').addEventListener('input', renderPlayerTable);
-      document.getElementById('teamFilter').addEventListener('change', renderPlayerTable);
-      document.getElementById('posFilter').addEventListener('change', renderPlayerTable);
-
-      // Sort headers
-      document.querySelectorAll('#playerTable th[data-sort]').forEach(th => {
-        th.addEventListener('click', () => {
-          const key = th.dataset.sort;
-          if (currentSort.key === key) {
-            currentSort.dir *= -1;
-          } else {
-            currentSort = { key, dir: -1 };
-          }
-          document.querySelectorAll('#playerTable th').forEach(h => h.classList.remove('active'));
-          th.classList.add('active');
-          renderPlayerTable();
-        });
-      });
-    }
-
-    function renderPlayerTable() {
-      let p = [...(DATA.players || [])];
-      const search = document.getElementById('playerSearch').value.toLowerCase();
-      const team = document.getElementById('teamFilter').value;
-      const pos = document.getElementById('posFilter').value;
-
-      if (search) p = p.filter(x => x.name.toLowerCase().includes(search));
-      if (team) p = p.filter(x => x.team === team);
-      if (pos) p = p.filter(x => x.position === pos);
-
-      // Sort
-      p.sort((a, b) => {
-        const key = currentSort.key;
-        if (key === 'name' || key === 'team' || key === 'position') {
-          return currentSort.dir * (a[key] || '').localeCompare(b[key] || '');
-        }
-        return currentSort.dir * ((b[key] || 0) - (a[key] || 0));
-      });
+      if (!teamStats.length) {
+        document.getElementById('teamsBody').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin resultados aun - los datos apareceran cuando se jueguen partidos</td></tr>';
+        return;
+      }
 
       let html = '';
-      p.forEach(pl => {
+      teamStats.forEach((t, i) => {
+        const diffCls = t.dif > 0 ? 'diff-pos' : (t.dif < 0 ? 'diff-neg' : '');
         html += `<tr>
-          <td class="left"><span class="player-name">${pl.name}</span></td>
-          <td><span class="player-team">${shortTeamName(pl.team)}</span></td>
-          <td>${pl.position}</td>
-          <td>${pl.gp}</td>
-          <td>${pl.min?.toFixed(1) || '-'}</td>
-          <td><strong>${pl.pts?.toFixed(1) || '-'}</strong></td>
-          <td>${pl.reb?.toFixed(1) || '-'}</td>
-          <td>${pl.ast?.toFixed(1) || '-'}</td>
-          <td>${pl.stl?.toFixed(1) || '-'}</td>
-          <td>${pl.blk?.toFixed(1) || '-'}</td>
-          <td>${pl.to?.toFixed(1) || '-'}</td>
-          <td>${pl.fg_pct?.toFixed(1) || '-'}%</td>
-          <td>${pl.tp_pct?.toFixed(1) || '-'}%</td>
-          <td>${pl.ft_pct?.toFixed(1) || '-'}%</td>
+          <td class="num">${i + 1}</td>
+          <td class="team-name">${t.name}</td>
+          <td class="num">${t.pj}</td>
+          <td class="num">${t.pg}</td>
+          <td class="num">${t.pp}</td>
+          <td class="num">${t.pf}</td>
+          <td class="num">${t.pc}</td>
+          <td class="num ${diffCls}">${t.dif > 0 ? '+' : ''}${t.dif}</td>
+          <td class="num"><strong>${t.ppp}</strong></td>
         </tr>`;
       });
+      document.getElementById('teamsBody').innerHTML = html;
 
-      document.getElementById('playerBody').innerHTML = html;
-      document.getElementById('playerCount').textContent = p.length + ' jugadores';
-    }
+      // Charts
+      if (teamStats.length > 0) {
+        destroyChart('chartTeamPfPc');
+        charts.chartTeamPfPc = new Chart(document.getElementById('chartTeamPfPc'), {
+          type: 'bar',
+          data: {
+            labels: teamStats.map(t => shortTeamName(t.name)),
+            datasets: [
+              { label: 'PF', data: teamStats.map(t => t.pf), backgroundColor: 'rgba(78, 205, 196, 0.7)', borderColor: 'rgba(78, 205, 196, 1)', borderWidth: 1 },
+              { label: 'PC', data: teamStats.map(t => t.pc), backgroundColor: 'rgba(255, 107, 107, 0.7)', borderColor: 'rgba(255, 107, 107, 1)', borderWidth: 1 }
+            ]
+          },
+          options: chartOptions('Puntos totales')
+        });
 
-    // ========================================
-    // LEADERS
-    // ========================================
-    function renderLeaders() {
-      const p = DATA.players || [];
-      if (!p.length) return;
-
-      renderLeaderList('leaderPts', p, 'pts', 'ppg');
-      renderLeaderList('leaderReb', p, 'reb', 'rpg');
-      renderLeaderList('leaderAst', p, 'ast', 'apg');
-      renderLeaderList('leaderStl', p, 'stl', 'spg');
-      renderLeaderList('leaderBlk', p, 'blk', 'bpg');
-      renderLeaderList('leaderTp', p, 'tp_pct', '%', 5);
-    }
-
-    function renderLeaderList(containerId, players, stat, unit, minGp) {
-      let sorted = [...players];
-      if (minGp) sorted = sorted.filter(p => p.gp >= minGp);
-      sorted.sort((a, b) => (b[stat] || 0) - (a[stat] || 0));
-      const top = sorted.slice(0, 5);
-      const max = top[0]?.[stat] || 1;
-
-      let html = '';
-      top.forEach((p, i) => {
-        const rankCls = i < 3 ? `r${i + 1}` : '';
-        const pct = ((p[stat] / max) * 100).toFixed(0);
-        html += `<div class="leader-item">
-          <div class="leader-rank ${rankCls}">${i + 1}</div>
-          <div class="leader-info">
-            <div class="leader-name">${p.name}</div>
-            <div class="leader-team">${shortTeamName(p.team)}</div>
-            <div class="leader-bar"><div class="leader-bar-fill" style="width:${pct}%"></div></div>
-          </div>
-          <div class="leader-value">${p[stat]?.toFixed(1)} <span style="font-size:0.7rem;color:var(--text-muted)">${unit}</span></div>
-        </div>`;
-      });
-
-      document.getElementById(containerId).innerHTML = html;
+        destroyChart('chartTeamPpp');
+        charts.chartTeamPpp = new Chart(document.getElementById('chartTeamPpp'), {
+          type: 'bar',
+          data: {
+            labels: teamStats.map(t => shortTeamName(t.name)),
+            datasets: [{
+              label: 'PPP',
+              data: teamStats.map(t => Number(t.ppp)),
+              backgroundColor: 'rgba(255, 107, 53, 0.6)',
+              borderColor: 'rgba(255, 107, 53, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: chartOptions('Promedio puntos por partido')
+        });
+      }
     }
 
     // ========================================
@@ -1119,19 +1323,25 @@
       const m = DATA.matches || [];
 
       // Populate matchday filter
-      const matchdays = [...new Set(m.map(x => x.matchday))].sort((a, b) => b - a);
+      const matchdays = [...new Set(m.map(x => x.matchday))].sort((a, b) => a - b);
       const sel = document.getElementById('matchdayFilter');
       sel.innerHTML = '<option value="">Todas las fechas</option>';
       matchdays.forEach(md => {
         sel.innerHTML += `<option value="${md}">Fecha ${md}</option>`;
       });
 
+      // Populate team filter from matches
+      const teamFilter = document.getElementById('matchTeamFilter');
+      const teams = [...new Set([...m.map(x => x.home), ...m.map(x => x.away)])].filter(Boolean).sort();
+      teamFilter.innerHTML = '<option value="">Todos los equipos</option>';
+      teams.forEach(t => {
+        teamFilter.innerHTML += `<option value="${t}">${shortTeamName(t)}</option>`;
+      });
+
       renderMatchList();
 
-      document.getElementById('matchTeamFilter').addEventListener('change', renderMatchList);
-      document.getElementById('matchdayFilter').addEventListener('change', renderMatchList);
-
-      renderMatchScoresChart();
+      teamFilter.addEventListener('change', renderMatchList);
+      sel.addEventListener('change', renderMatchList);
     }
 
     function renderMatchList() {
@@ -1142,83 +1352,33 @@
       if (team) m = m.filter(x => x.home === team || x.away === team);
       if (md) m = m.filter(x => x.matchday == md);
 
-      m.sort((a, b) => b.matchday - a.matchday || b.date?.localeCompare(a.date));
+      m.sort((a, b) => a.matchday - b.matchday || (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
 
       let html = '';
-      m.forEach(match => {
-        const homeWin = match.homeScore > match.awayScore;
-        html += `<div class="match-card">
-          <div class="match-date"><div class="match-day">Fecha ${match.matchday}</div>${match.date}</div>
-          <div class="match-teams">
-            <div class="match-team home" style="font-weight:${homeWin ? '700' : '400'}">${shortTeamName(match.home)}</div>
-            <div class="match-score">
-              <span class="${homeWin ? 'score-win' : 'score-loss'}">${match.homeScore}</span>
-              <span style="color:var(--text-muted)">-</span>
-              <span class="${!homeWin ? 'score-win' : 'score-loss'}">${match.awayScore}</span>
-            </div>
-            <div class="match-team away" style="font-weight:${!homeWin ? '700' : '400'}">${shortTeamName(match.away)}</div>
-          </div>
-        </div>`;
-      });
+      m.forEach(match => { html += matchCard(match, true); });
 
       document.getElementById('matchList').innerHTML = html || '<div style="padding:2rem;text-align:center;color:var(--text-muted);">No hay partidos</div>';
       document.getElementById('matchCount').textContent = m.length + ' partidos';
     }
 
-    function renderMatchScoresChart() {
-      const m = [...(DATA.matches || [])].sort((a, b) => a.matchday - b.matchday);
-      if (!m.length) return;
-
-      const byMatchday = {};
-      m.forEach(match => {
-        if (!byMatchday[match.matchday]) byMatchday[match.matchday] = [];
-        byMatchday[match.matchday].push(match.homeScore + match.awayScore);
-      });
-
-      const labels = Object.keys(byMatchday).sort((a, b) => a - b);
-      const avgScores = labels.map(md => {
-        const scores = byMatchday[md];
-        return (scores.reduce((s, x) => s + x, 0) / scores.length).toFixed(1);
-      });
-
-      destroyChart('chartMatchScores');
-      charts.chartMatchScores = new Chart(document.getElementById('chartMatchScores'), {
-        type: 'line',
-        data: {
-          labels: labels.map(l => 'F' + l),
-          datasets: [{
-            label: 'Promedio puntos combinados',
-            data: avgScores,
-            borderColor: 'rgba(255, 107, 53, 1)',
-            backgroundColor: 'rgba(255, 107, 53, 0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 4,
-            pointBackgroundColor: 'rgba(255, 107, 53, 1)'
-          }]
-        },
-        options: chartOptions('Puntos combinados por partido')
-      });
-    }
-
     // ========================================
-    // COMPARE
+    // COMPARE TEAMS
     // ========================================
     function renderCompare() {
-      const p = DATA.players || [];
-      if (!p.length) return;
+      const teamStats = computeTeamStats();
+      if (!teamStats.length) return;
 
-      const sel1 = document.getElementById('comparePlayer1');
-      const sel2 = document.getElementById('comparePlayer2');
+      const sel1 = document.getElementById('compareTeam1');
+      const sel2 = document.getElementById('compareTeam2');
       sel1.innerHTML = '';
       sel2.innerHTML = '';
 
-      p.forEach(pl => {
-        sel1.innerHTML += `<option value="${pl.id}">${pl.name} (${shortTeamName(pl.team)})</option>`;
-        sel2.innerHTML += `<option value="${pl.id}">${pl.name} (${shortTeamName(pl.team)})</option>`;
+      teamStats.forEach(t => {
+        sel1.innerHTML += `<option value="${t.name}">${t.name}</option>`;
+        sel2.innerHTML += `<option value="${t.name}">${t.name}</option>`;
       });
 
-      if (p.length >= 2) sel2.value = p[1].id;
+      if (teamStats.length >= 2) sel2.value = teamStats[1].name;
 
       sel1.addEventListener('change', updateCompare);
       sel2.addEventListener('change', updateCompare);
@@ -1227,19 +1387,19 @@
     }
 
     function updateCompare() {
-      const p = DATA.players || [];
-      const id1 = document.getElementById('comparePlayer1').value;
-      const id2 = document.getElementById('comparePlayer2').value;
-      const p1 = p.find(x => x.id == id1);
-      const p2 = p.find(x => x.id == id2);
-      if (!p1 || !p2) return;
+      const teamStats = computeTeamStats();
+      const m = DATA.matches || [];
+      const name1 = document.getElementById('compareTeam1').value;
+      const name2 = document.getElementById('compareTeam2').value;
+      const t1 = teamStats.find(t => t.name === name1);
+      const t2 = teamStats.find(t => t.name === name2);
+      if (!t1 || !t2) return;
 
       // Radar chart
-      const stats = ['pts', 'reb', 'ast', 'stl', 'blk'];
-      const labels = ['Puntos', 'Rebotes', 'Asistencias', 'Robos', 'Tapas'];
-      const maxVals = stats.map(s => Math.max(...p.map(x => x[s] || 0)));
-
-      const normalize = (val, max) => max ? ((val / max) * 100).toFixed(1) : 0;
+      const stats = ['pg', 'pf', 'pc', 'dif'];
+      const labels = ['Ganados', 'PF Total', 'PC Total', 'Diferencia'];
+      const maxVals = stats.map(s => Math.max(...teamStats.map(t => Math.abs(t[s]) || 1)));
+      const normalize = (val, max) => max ? ((Math.abs(val) / max) * 100).toFixed(1) : 0;
 
       destroyChart('chartRadar');
       charts.chartRadar = new Chart(document.getElementById('chartRadar'), {
@@ -1248,16 +1408,16 @@
           labels,
           datasets: [
             {
-              label: p1.name,
-              data: stats.map((s, i) => normalize(p1[s], maxVals[i])),
+              label: shortTeamName(t1.name),
+              data: stats.map((s, i) => normalize(t1[s], maxVals[i])),
               borderColor: 'rgba(255, 107, 53, 1)',
               backgroundColor: 'rgba(255, 107, 53, 0.2)',
               pointBackgroundColor: 'rgba(255, 107, 53, 1)',
               borderWidth: 2
             },
             {
-              label: p2.name,
-              data: stats.map((s, i) => normalize(p2[s], maxVals[i])),
+              label: shortTeamName(t2.name),
+              data: stats.map((s, i) => normalize(t2[s], maxVals[i])),
               borderColor: 'rgba(78, 205, 196, 1)',
               backgroundColor: 'rgba(78, 205, 196, 0.2)',
               pointBackgroundColor: 'rgba(78, 205, 196, 1)',
@@ -1283,40 +1443,371 @@
         }
       });
 
-      // Side by side stats
+      // Side by side stats table
       const allStats = [
-        { key: 'pts', label: 'Puntos' },
-        { key: 'reb', label: 'Rebotes' },
-        { key: 'ast', label: 'Asistencias' },
-        { key: 'stl', label: 'Robos' },
-        { key: 'blk', label: 'Tapas' },
-        { key: 'to', label: 'Perdidas' },
-        { key: 'min', label: 'Minutos' },
-        { key: 'fg_pct', label: 'TC%' },
-        { key: 'tp_pct', label: '3P%' },
-        { key: 'ft_pct', label: 'TL%' },
-        { key: 'gp', label: 'PJ' }
+        { key: 'pj', label: 'PJ', fmt: v => v },
+        { key: 'pg', label: 'Ganados', fmt: v => v },
+        { key: 'pp', label: 'Perdidos', fmt: v => v, invert: true },
+        { key: 'pf', label: 'PF Total', fmt: v => v },
+        { key: 'pc', label: 'PC Total', fmt: v => v, invert: true },
+        { key: 'dif', label: 'Diferencia', fmt: v => (v > 0 ? '+' : '') + v },
+        { key: 'ppp', label: 'PPP', fmt: v => v },
+        { key: 'pcp', label: 'PCP', fmt: v => v, invert: true },
       ];
 
-      let html = '<table class="player-table" style="font-size:0.85rem;"><thead><tr>';
-      html += '<th class="left">Stat</th>';
-      html += `<th style="color:var(--accent)">${p1.name.split(' ').pop()}</th>`;
-      html += `<th style="color:var(--accent2)">${p2.name.split(' ').pop()}</th>`;
+      let html = '<table class="standings-table" style="font-size:0.85rem;"><thead><tr>';
+      html += '<th>Stat</th>';
+      html += `<th class="num" style="color:var(--accent)">${shortTeamName(t1.name)}</th>`;
+      html += `<th class="num" style="color:var(--accent2)">${shortTeamName(t2.name)}</th>`;
       html += '</tr></thead><tbody>';
 
-      allStats.forEach(({ key, label }) => {
-        const v1 = p1[key] || 0;
-        const v2 = p2[key] || 0;
-        const better = key === 'to' ? (v1 < v2 ? 1 : v1 > v2 ? 2 : 0) : (v1 > v2 ? 1 : v1 < v2 ? 2 : 0);
+      allStats.forEach(({ key, label, fmt, invert }) => {
+        const v1 = t1[key] || 0, v2 = t2[key] || 0;
+        const n1 = Number(v1), n2 = Number(v2);
+        const better = invert ? (n1 < n2 ? 1 : n1 > n2 ? 2 : 0) : (n1 > n2 ? 1 : n1 < n2 ? 2 : 0);
         html += `<tr>
-          <td class="left">${label}</td>
-          <td style="font-weight:${better === 1 ? '700' : '400'}; color:${better === 1 ? 'var(--accent)' : 'inherit'}">${typeof v1 === 'number' ? v1.toFixed(1) : v1}</td>
-          <td style="font-weight:${better === 2 ? '700' : '400'}; color:${better === 2 ? 'var(--accent2)' : 'inherit'}">${typeof v2 === 'number' ? v2.toFixed(1) : v2}</td>
+          <td>${label}</td>
+          <td class="num" style="font-weight:${better === 1 ? '700' : '400'}; color:${better === 1 ? 'var(--accent)' : 'inherit'}">${fmt(v1)}</td>
+          <td class="num" style="font-weight:${better === 2 ? '700' : '400'}; color:${better === 2 ? 'var(--accent2)' : 'inherit'}">${fmt(v2)}</td>
+        </tr>`;
+      });
+
+      // Head-to-head
+      const h2h = m.filter(x => isPlayed(x) && ((x.home === name1 && x.away === name2) || (x.home === name2 && x.away === name1)));
+      if (h2h.length > 0) {
+        html += '<tr><td colspan="3" style="text-align:center;padding:0.8rem 0 0.3rem;font-weight:700;color:var(--text-muted);">Enfrentamiento directo</td></tr>';
+        h2h.forEach(x => {
+          html += `<tr><td colspan="3" style="text-align:center;">${shortTeamName(x.home)} ${x.homeScore} - ${x.awayScore} ${shortTeamName(x.away)}</td></tr>`;
+        });
+      }
+
+      html += '</tbody></table>';
+      document.getElementById('compareStats').innerHTML = html;
+    }
+
+    // ========================================
+    // STATS (Top Players + Box Scores)
+    // ========================================
+    function renderStats() {
+      const topPlayers = DATA.topPlayers;
+      const matchStats = DATA.matchStats || [];
+
+      // Wire up view toggle
+      const viewSelect = document.getElementById('statsView');
+      const catSelect = document.getElementById('statsCategory');
+      const matchSelect = document.getElementById('boxScoreMatch');
+      const rosterSelect = document.getElementById('rosterTeamSelect');
+
+      viewSelect.onchange = () => {
+        const val = viewSelect.value;
+        document.getElementById('statsTopPlayers').style.display = val === 'topPlayers' ? '' : 'none';
+        document.getElementById('statsBoxScores').style.display = val === 'boxScores' ? '' : 'none';
+        document.getElementById('statsTeamRoster').style.display = val === 'teamRoster' ? '' : 'none';
+        catSelect.style.display = val === 'topPlayers' ? '' : 'none';
+        matchSelect.style.display = val === 'boxScores' ? '' : 'none';
+        rosterSelect.style.display = val === 'teamRoster' ? '' : 'none';
+        if (val === 'boxScores') renderBoxScore();
+        if (val === 'teamRoster') renderTeamRoster();
+      };
+      catSelect.onchange = () => renderTopPlayers();
+
+      // Populate box score match selector
+      matchSelect.innerHTML = '<option value="">Seleccionar partido...</option>';
+      matchStats.forEach((ms, idx) => {
+        const label = `${ms.home || '?'} vs ${ms.away || '?'} (${ms.date || ''})`;
+        matchSelect.innerHTML += `<option value="${idx}">${label}</option>`;
+      });
+      matchSelect.onchange = () => renderBoxScore();
+
+      // Populate roster team selector from matchStats
+      const rosterTeams = new Set();
+      matchStats.forEach(ms => {
+        if (ms.home) rosterTeams.add(ms.home);
+        if (ms.away) rosterTeams.add(ms.away);
+      });
+      // Also add teams from standings
+      (DATA.standings || []).forEach(s => { if (s.team) rosterTeams.add(s.team); });
+      rosterSelect.innerHTML = '';
+      [...rosterTeams].sort().forEach(t => {
+        rosterSelect.innerHTML += `<option value="${t}">${t}</option>`;
+      });
+      rosterSelect.onchange = () => renderTeamRoster();
+
+      renderTopPlayers();
+    }
+
+    function renderTeamRoster() {
+      const matchStats = DATA.matchStats || [];
+      const container = document.getElementById('rosterContent');
+      const titleEl = document.getElementById('rosterTitle');
+      const infoEl = document.getElementById('rosterInfo');
+      const teamName = document.getElementById('rosterTeamSelect').value;
+
+      if (!matchStats.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin box scores disponibles. Ejecuta el scraper para obtener estadisticas de partidos.</div>';
+        return;
+      }
+
+      if (!teamName) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Selecciona un equipo</div>';
+        return;
+      }
+
+      // Accumulate player stats across all matches for this team
+      const playerAccum = {};
+      let teamGames = 0;
+      let teamPts = 0, teamReb = 0, teamAst = 0, teamPer = 0, teamRec = 0, teamTap = 0, teamFp = 0, teamVal = 0;
+      let teamT2m = 0, teamT2i = 0, teamT3m = 0, teamT3i = 0, teamTlm = 0, teamTli = 0;
+
+      matchStats.forEach(ms => {
+        let players = null;
+        if (ms.home === teamName) players = ms.homePlayers || [];
+        else if (ms.away === teamName) players = ms.awayPlayers || [];
+        if (!players) return;
+
+        teamGames++;
+        players.forEach(p => {
+          const key = p.name || p.dorsal || 'unknown';
+          if (!playerAccum[key]) {
+            playerAccum[key] = {
+              name: p.name, dorsal: p.dorsal, pj: 0,
+              pts: 0, reb: 0, rebO: 0, rebD: 0, ast: 0, per: 0, rec: 0, tap: 0, fp: 0, val: 0,
+              t2m: 0, t2i: 0, t3m: 0, t3i: 0, tlm: 0, tli: 0,
+            };
+          }
+          const a = playerAccum[key];
+          a.pj++;
+          a.pts += p.pts || 0;
+          a.reb += p.reb || 0;
+          a.rebO += p.rebO || 0;
+          a.rebD += p.rebD || 0;
+          a.ast += p.ast || 0;
+          a.per += p.per || 0;
+          a.rec += p.rec || 0;
+          a.tap += p.tap || 0;
+          a.fp += p.fp || 0;
+          a.val += p.val || 0;
+
+          // Parse t2, t3, tl strings like "3/7"
+          const parseShot = (s) => { const m = (s || '').match(/(\d+)\/(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
+          const [t2m, t2i] = parseShot(p.t2);
+          const [t3m, t3i] = parseShot(p.t3);
+          const [tlm, tli] = parseShot(p.tl);
+          a.t2m += t2m; a.t2i += t2i;
+          a.t3m += t3m; a.t3i += t3i;
+          a.tlm += tlm; a.tli += tli;
+
+          // Team totals
+          teamPts += p.pts || 0;
+          teamReb += p.reb || 0;
+          teamAst += p.ast || 0;
+          teamPer += p.per || 0;
+          teamRec += p.rec || 0;
+          teamTap += p.tap || 0;
+          teamFp += p.fp || 0;
+          teamVal += p.val || 0;
+          teamT2m += t2m; teamT2i += t2i;
+          teamT3m += t3m; teamT3i += t3i;
+          teamTlm += tlm; teamTli += tli;
+        });
+      });
+
+      const players = Object.values(playerAccum).sort((a, b) => b.pts - a.pts);
+      if (!players.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin estadisticas para este equipo</div>';
+        return;
+      }
+
+      titleEl.textContent = `Plantel - ${teamName}`;
+      infoEl.textContent = `${players.length} jugadores | ${teamGames} partidos`;
+
+      const pct = (m, i) => i > 0 ? (m / i * 100).toFixed(0) + '%' : '-';
+
+      let html = '<table class="player-table"><thead><tr>';
+      html += '<th class="left">Nro</th><th class="left">Jugador</th><th>PJ</th>';
+      html += '<th>PTS</th><th>T2</th><th>T3</th><th>TL</th>';
+      html += '<th>REB</th><th>AST</th><th>PER</th><th>REC</th><th>TAP</th><th>FP</th><th>VAL</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach(p => {
+        html += `<tr>
+          <td class="left">${p.dorsal || '-'}</td>
+          <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+          <td>${p.pj}</td>
+          <td><strong>${p.pts}</strong></td>
+          <td>${p.t2m}/${p.t2i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.t2m, p.t2i)}</span></td>
+          <td>${p.t3m}/${p.t3i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.t3m, p.t3i)}</span></td>
+          <td>${p.tlm}/${p.tli} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(p.tlm, p.tli)}</span></td>
+          <td>${p.reb}</td><td>${p.ast}</td>
+          <td>${p.per}</td><td>${p.rec}</td>
+          <td>${p.tap}</td><td>${p.fp}</td>
+          <td style="color:var(--accent)"><strong>${p.val}</strong></td>
+        </tr>`;
+      });
+
+      // Team totals row
+      html += `<tr style="border-top:2px solid var(--accent);font-weight:700;background:var(--bg-hover);">
+        <td class="left" colspan="2" style="color:var(--accent);">EQUIPO</td>
+        <td>${teamGames}</td>
+        <td><strong>${teamPts}</strong></td>
+        <td>${teamT2m}/${teamT2i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamT2m, teamT2i)}</span></td>
+        <td>${teamT3m}/${teamT3i} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamT3m, teamT3i)}</span></td>
+        <td>${teamTlm}/${teamTli} <span style="color:var(--text-muted);font-size:0.7rem;">${pct(teamTlm, teamTli)}</span></td>
+        <td>${teamReb}</td><td>${teamAst}</td>
+        <td>${teamPer}</td><td>${teamRec}</td>
+        <td>${teamTap}</td><td>${teamFp}</td>
+        <td style="color:var(--accent)"><strong>${teamVal}</strong></td>
+      </tr>`;
+
+      // Promedios row
+      html += `<tr style="font-style:italic;color:var(--text-secondary);background:var(--bg-hover);">
+        <td class="left" colspan="2">Promedio/partido</td>
+        <td>-</td>
+        <td>${(teamPts/teamGames).toFixed(1)}</td>
+        <td colspan="3"></td>
+        <td>${(teamReb/teamGames).toFixed(1)}</td><td>${(teamAst/teamGames).toFixed(1)}</td>
+        <td>${(teamPer/teamGames).toFixed(1)}</td><td>${(teamRec/teamGames).toFixed(1)}</td>
+        <td>${(teamTap/teamGames).toFixed(1)}</td><td>${(teamFp/teamGames).toFixed(1)}</td>
+        <td>${(teamVal/teamGames).toFixed(1)}</td>
+      </tr>`;
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function renderTopPlayers() {
+      const topPlayers = DATA.topPlayers;
+      const container = document.getElementById('topPlayersList');
+      const countEl = document.getElementById('topPlayersCount');
+      const category = document.getElementById('statsCategory').value;
+
+      if (!topPlayers) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de mejores jugadores para este grupo. Ejecuta el scraper completo (scraper_api.js) para obtener estadísticas de partidos.</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      const categoryLabels = {
+        valoracion: 'Valoración',
+        puntos: 'Puntos',
+        rebotes: 'Rebotes',
+        asistencias: 'Asistencias',
+      };
+      const label = categoryLabels[category] || 'Valoración';
+      document.getElementById('topPlayersTitle').textContent = `Mejores Jugadores - ${label}`;
+
+      // topPlayers format: { puntos: [{name, team, pj, total, avg}], rebotes: [...], ... }
+      const players = topPlayers[category] || [];
+
+      if (!players.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin datos de ' + label + '</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      countEl.textContent = `${players.length} jugadores`;
+
+      let html = '<table class="player-table"><thead><tr>';
+      html += '<th class="left">#</th><th class="left">Jugador</th><th class="left">Equipo</th>';
+      html += '<th>Prom</th><th>Total</th><th>PJ</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach((p, idx) => {
+        const rankClass = idx < 3 ? `leader-rank r${idx + 1}` : '';
+        html += `<tr${idx < 3 ? ' class="highlight"' : ''}>
+          <td class="left"><span class="${rankClass}" style="display:inline-block;width:24px;text-align:center;">${idx + 1}</span></td>
+          <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+          <td class="left"><span class="player-team">${shortTeamName(p.team || '')}</span></td>
+          <td><strong style="color:var(--accent)">${p.avg}</strong></td>
+          <td>${p.total}</td>
+          <td>${p.pj}</td>
         </tr>`;
       });
 
       html += '</tbody></table>';
-      document.getElementById('compareStats').innerHTML = html;
+      container.innerHTML = html;
+    }
+
+    function renderBoxScore() {
+      const matchStats = DATA.matchStats || [];
+      const container = document.getElementById('boxScoreContent');
+      const matchIdx = document.getElementById('boxScoreMatch').value;
+
+      if (!matchStats.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin box scores disponibles. Ejecuta el scraper completo (scraper_api.js) para obtener estadísticas de partidos.</div>';
+        return;
+      }
+
+      if (matchIdx === '') {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Selecciona un partido para ver el box score</div>';
+        return;
+      }
+
+      const ms = matchStats[Number(matchIdx)];
+      if (!ms) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Datos no disponibles</div>';
+        return;
+      }
+
+      // Score header
+      const scoreHdr = (ms.scoreHome != null && ms.scoreAway != null)
+        ? ` — ${ms.scoreHome} : ${ms.scoreAway}` : '';
+      document.getElementById('boxScoreTitle').textContent = `${ms.home || '?'} vs ${ms.away || '?'}${scoreHdr}`;
+
+      // Periods summary
+      let periodsHtml = '';
+      if (ms.periods && ms.periods.length) {
+        periodsHtml = '<div style="padding:0.5rem 1rem;font-size:0.85rem;color:var(--text-muted);">Parciales: ' +
+          ms.periods.map(p => `${p.tanteo_periodo_local}-${p.tanteo_periodo_visitante}`).join(' | ') + '</div>';
+      }
+
+      // New format: homePlayers and awayPlayers are arrays of {name, dorsal, starter, pts, t2, t3, tl, reb, ast, val, min, ...}
+      const homePlayers = ms.homePlayers || [];
+      const awayPlayers = ms.awayPlayers || [];
+
+      let html = periodsHtml;
+
+      const renderTeamTable = (players, teamName, score) => {
+        if (!players.length) return `<div style="padding:1rem;color:var(--text-muted);">Sin datos de jugadores para ${teamName}</div>`;
+
+        const scoreStr = score != null ? ` (${score})` : '';
+        let t = `<div style="padding:0.8rem 1rem;background:var(--bg-hover);font-weight:700;color:var(--accent);">${teamName}${scoreStr}</div>`;
+        t += '<div style="overflow-x:auto;"><table class="player-table"><thead><tr>';
+        t += '<th class="left">Nro</th><th class="left">Jugador</th>';
+        t += '<th>MIN</th><th>PTS</th><th>T2</th><th>T3</th><th>TL</th>';
+        t += '<th>REB</th><th>AST</th><th>PER</th><th>REC</th><th>TAP</th><th>FP</th><th>VAL</th>';
+        t += '</tr></thead><tbody>';
+
+        // Sort: starters first, then by points descending
+        const sorted = [...players].sort((a, b) => {
+          if (a.starter && !b.starter) return -1;
+          if (!a.starter && b.starter) return 1;
+          return b.pts - a.pts;
+        });
+
+        sorted.forEach(p => {
+          t += `<tr>
+            <td class="left">${p.starter ? '*' : ''}${p.dorsal}</td>
+            <td class="left"><span class="player-name">${p.name || '?'}</span></td>
+            <td>${p.min || '-'}</td>
+            <td><strong>${p.pts}</strong></td>
+            <td>${p.t2 || '-'}</td><td>${p.t3 || '-'}</td><td>${p.tl || '-'}</td>
+            <td>${p.reb || '-'}</td><td>${p.ast || '-'}</td>
+            <td>${p.per || '-'}</td><td>${p.rec || '-'}</td>
+            <td>${p.tap || '-'}</td><td>${p.fp || '-'}</td>
+            <td style="color:var(--accent)">${p.val || '-'}</td>
+          </tr>`;
+        });
+
+        t += '</tbody></table></div>';
+        return t;
+      };
+
+      html += renderTeamTable(homePlayers, ms.home || 'Local', ms.scoreHome);
+      html += '<div style="border-top:2px solid var(--border);"></div>';
+      html += renderTeamTable(awayPlayers, ms.away || 'Visitante', ms.scoreAway);
+
+      container.innerHTML = html;
     }
 
     // ========================================
