@@ -64,24 +64,48 @@ def sync_all(busqueda: str = "FEBAMBA", db_path: Path | None = None):
     logger.info("=== Iniciando sincronización ===")
 
     # Paso 1: Buscar competiciones
+    # El JS usa buscar('Categoria', 'Buenos Aires') y el resultado viene en "categorias"
     logger.info("Buscando competiciones '%s'...", busqueda)
     result = client.buscar_categoria(busqueda)
 
+    # Debug: mostrar estructura de respuesta
+    if result:
+        logger.info("Respuesta búsqueda - keys: %s", list(result.keys()))
+        logger.info("Respuesta búsqueda - resultado: %s", result.get("resultado", "N/A"))
+
     competiciones = []
-    if result and result.get("resultado") == "correcto":
-        datos = result.get("datos", [])
-        if isinstance(datos, list):
-            competiciones = datos
-        elif isinstance(datos, dict):
-            competiciones = datos.get("ListaCategorias", datos.get("Lista", [datos]))
+    if result:
+        # La API devuelve las competiciones en "categorias" (confirmado por scraper_api.js)
+        if "categorias" in result:
+            competiciones = result["categorias"]
+        elif result.get("resultado") == "correcto":
+            datos = result.get("datos", [])
+            if isinstance(datos, list):
+                competiciones = datos
+            elif isinstance(datos, dict):
+                competiciones = datos.get("ListaCategorias", datos.get("Lista", [datos]))
+
+    if not competiciones:
+        # Fallback: buscar "Buenos Aires" como hace el JS
+        logger.info("Buscando con 'Buenos Aires'...")
+        result2 = client.buscar_categoria("Buenos Aires")
+        if result2:
+            logger.info("Respuesta Buenos Aires - keys: %s", list(result2.keys()))
+            if "categorias" in result2:
+                competiciones = result2["categorias"]
+            elif result2.get("datos"):
+                datos = result2["datos"]
+                competiciones = datos if isinstance(datos, list) else [datos]
 
     if not competiciones:
         # Fallback: intentar con get_competiciones
         logger.info("Buscando competiciones con endpoint directo...")
         result = client.get_competiciones()
-        if result and result.get("datos"):
-            datos = result["datos"]
-            competiciones = datos if isinstance(datos, list) else [datos]
+        if result:
+            logger.info("Respuesta competiciones - keys: %s", list(result.keys()))
+            if result.get("datos"):
+                datos = result["datos"]
+                competiciones = datos if isinstance(datos, list) else [datos]
 
     logger.info("Encontradas %d competiciones", len(competiciones))
 
