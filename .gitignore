@@ -10,3 +10,7 @@ data/scrape_summary.json
 page_*.html
 apk_analysis/
 cabb.apk
+__pycache__/
+*.pyc
+.session.json
+estadisticas_febamba.db
