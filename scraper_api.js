@@ -329,7 +329,7 @@ async function accessExistingDevice() {
     accion: 'acceso',
     uid: SESSION.uid,
     plataforma: plat,
-    tipo_dispositivo: plat,
+    tipo_dispositivo: 'mobile',  // mitmproxy: confirmed "mobile" not platform name
     id_dispositivo: SESSION.id_dispositivo,
     token_push: '',
     version: APP_VERSION,
