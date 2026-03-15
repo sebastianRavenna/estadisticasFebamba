@@ -84,9 +84,10 @@ class CABBClient:
         - token_push: vacío
         - version: "40044"
         """
+        # Siempre renovar la key al inicio (key rotativa, la cacheada puede estar vieja)
         if self.key and self.id_dispositivo:
-            logger.info("Ya hay sesión activa, skip registro")
-            return True
+            logger.info("Sesión cacheada encontrada, renovando key via acceso...")
+            # No retornar, seguir abajo para renovar
 
         if not self.uid:
             # uid capturado con mitmproxy del emulador real
@@ -180,14 +181,30 @@ class CABBClient:
                 self.key = result["key"]
                 self._save_session()
 
+            # Log errores para debug
+            if result.get("resultado") == "error":
+                error_msg = result.get("error", "")
+                logger.warning("API error en %s: '%s' (keys: %s)", endpoint, error_msg, list(result.keys()))
+
             # Sesión expirada → re-registrar y reintentar
-            if result.get("resultado") == "error" and result.get("error") == "Sesión caducada":
-                logger.warning("Sesión caducada, re-registrando...")
-                self.key = ""
-                self.id_dispositivo = ""
-                if self.register_device():
-                    return self.api_call(endpoint, params, use_base_url)
-                return None
+            # Detectar: "Sesión caducada", "Faltan parámetros", o error vacío (key inválida)
+            if result.get("resultado") == "error":
+                error_msg = result.get("error", "")
+                is_session_error = error_msg in (
+                    "Sesión caducada", "Sesion caducada",
+                    "Faltan parámetros", "Faltan parametros",
+                    "",  # error vacío = key inválida
+                )
+                if is_session_error and not getattr(self, "_retrying", False):
+                    logger.warning("Sesión inválida ('%s'), re-registrando...", error_msg)
+                    self.key = ""
+                    self._retrying = True
+                    if self.register_device():
+                        result = self.api_call(endpoint, params, use_base_url)
+                        self._retrying = False
+                        return result
+                    self._retrying = False
+                    return None
 
             return result
 
