@@ -1,7 +1,8 @@
 {
-  "id_dispositivo": "fti6zCX8hqmIFZamp8wpm90cVpfW1glaEvn7oEkbBtdp4ouRr6NpWZjkswCEev6Po3tZ551nFKlupdjSaA_CVg==",
-  "key": "MUTC0u_ZKdBCdgfYN8bHO_0O6PmbcsZRmgtdT7oV40N2QSwO15F5Zo-X0juJTFBCUR1Y02MkR5DHEog8cfkQUOO5Gka7Givqy6_g0bALKzy-50VsIoR8e1J8HLvJKJdXKkiTtH7tdKUZAFi9aO0fs3qi7kSN9XNH46lgXveEbwFOlrlPCSb6VpmVdmthLEmD",
-  "uid": "e83ffb4a0c993d93",
+  "id_dispositivo": "CkaKyvtecCXVXeRYKgIqXStYvf2yl5IEyXIQ6WwDJj3xkrfFuBo7zFvyURXqJi9l2JUqFpnpyudLVnUaZGs_1Q==",
+  "key": "MUTC0u_ZKdBCdgfYN8bHO63lPFab9dIJYE3DFWZ1rO0HxH7_iUuNGRJ-6vr1EiIaORfcGmA146TB1aKaA-lZoCTe802ogupHBPLle3Hpt7CKNs5ukNtlINCVb-EpSChAIzHecXMmRnUhWcRTLVuvnL-vLSKPyMOo-kSO9hZtb2QMQf-dqmOdbQYfuxILPL_0H6eJkgEIv4_3cCGcQU90_5dY0mqDOp8FbPBzlNzImORrg1LLm-v6KYHQiTPmbduLt4EXI_f7gUd6X0aeGUD4cjJ7jLHgDwbn-ga2YPf1nEJR0mVI9r-_E96yglLwbRhNLZ3uIsPRpduUy_CrY8ct2A==",
+  "uid": "82e6f29ee9483c2f",
   "urlServidorDinamica": "",
-  "ruta": "https://appaficioncabb.indalweb.net/"
+  "ruta": "https://appaficioncabb.indalweb.net/",
+  "plataforma": "ios"
 }
