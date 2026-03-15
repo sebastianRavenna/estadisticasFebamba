@@ -889,6 +889,19 @@ async function main() {
 
   console.log(`\n--- Scrapeando ${targetComps.length} competiciones (excluidas: ${febambaComps.length - targetComps.length}) ---`);
 
+  // Limpiar cache de las competencias a scrapear para forzar re-consulta completa
+  const targetCompNames = targetComps.map(c => `${c.NombreCompeticion} - ${c.NombreCategoria}`);
+  const antesDeEliminar = Object.keys(DB.matchStats).length;
+  for (const [partidoId, match] of Object.entries(DB.matchStats)) {
+    if (targetCompNames.includes(match._meta?.compName)) {
+      delete DB.matchStats[partidoId];
+    }
+  }
+  const eliminados = antesDeEliminar - Object.keys(DB.matchStats).length;
+  if (eliminados > 0) {
+    console.log(`  Cache limpiado: ${eliminados} partidos eliminados de las competencias a scrapear`);
+  }
+
   for (const comp of targetComps) {
     try {
       await scrapeCompeticion(comp);
