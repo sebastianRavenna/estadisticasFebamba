@@ -26,7 +26,7 @@ const DELAY_MS = 1500;
 const APP_VERSION = '40044';
 
 let SESSION = {
-  id_dispositivo: '07f2c40994f8705d',
+  id_dispositivo: '', // Se genera como base64(random 64 bytes) al estilo real
   key: '',
   uid: '',
 };
@@ -109,7 +109,12 @@ async function registerDevice() {
     return true;
   }
 
-  if (!SESSION.uid) SESSION.uid = crypto.randomUUID();
+  if (!SESSION.uid) SESSION.uid = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+  if (!SESSION.id_dispositivo) {
+    // Generar id_dispositivo como base64 de 64 bytes random (formato real de la app)
+    const randomBytes = crypto.randomBytes(64);
+    SESSION.id_dispositivo = randomBytes.toString('base64');
+  }
   console.log(`  id_dispositivo: ${SESSION.id_dispositivo}`);
   console.log(`  uid: ${SESSION.uid}`);
 
@@ -119,7 +124,7 @@ async function registerDevice() {
     accion: 'acceso',
     uid: SESSION.uid,
     plataforma: 'android',
-    tipo_dispositivo: 'android',
+    tipo_dispositivo: 'mobile',  // mitmproxy: "mobile" no "android"
     id_dispositivo: SESSION.id_dispositivo,
     token_push: '',
     version: APP_VERSION,
@@ -163,6 +168,12 @@ async function apiCall(endpoint, params = {}, baseUrl = BASE_URL) {
 
   try {
     const data = await postAPI(url, params);
+
+    // CRÍTICO: Key rotativa - cada response trae una nueva key
+    if (data && data.key) {
+      SESSION.key = data.key;
+      saveSession();
+    }
 
     if (data && data.resultado === 'error' && data.error === 'Sesión caducada') {
       console.log('  Sesión caducada, re-registrando...');
