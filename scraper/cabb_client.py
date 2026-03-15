@@ -172,9 +172,16 @@ class CABBClient:
         logger.debug("POST %s params=%s", url, {k: v for k, v in params.items() if k != "key"})
 
         try:
-            resp = requests.post(url, data=params, headers=HEADERS, timeout=30)
-            resp.raise_for_status()
-            result = resp.json()
+            resp = requests.post(url, data=params, headers=HEADERS, timeout=60)
+            # No usar raise_for_status(): el servidor a veces devuelve JSON con status 500
+            if resp.status_code >= 400:
+                logger.warning("HTTP %d en %s", resp.status_code, endpoint)
+            try:
+                result = resp.json()
+            except ValueError:
+                logger.error("Respuesta no-JSON (HTTP %d) de %s: %s",
+                             resp.status_code, endpoint, resp.text[:200])
+                return None
 
             # CRÍTICO: Key rotativa - actualizar con cada response
             if result.get("key"):
@@ -221,6 +228,13 @@ class CABBClient:
         return self.api_call(ENDPOINTS["categoria"], {"accion": "competiciones", **extra})
 
     def buscar_categoria(self, texto: str, skip: int = 0) -> dict | None:
+        """buscarCategoria va a categoria.ashx (confirmado por mitmproxy)."""
+        return self.api_call(ENDPOINTS["categoria"], {
+            "accion": "buscarCategoria", "texto": texto, "skip": str(skip),
+        })
+
+    def buscar_categoria_v2(self, texto: str, skip: int = 0) -> dict | None:
+        """Fallback: intentar en busqueda.ashx."""
         return self.api_call(ENDPOINTS["busqueda"], {
             "accion": "buscarCategoria", "texto": texto, "skip": str(skip),
         })
