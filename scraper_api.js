@@ -425,9 +425,7 @@ async function apiCall(endpoint, params = {}, baseUrl = null) {
 
     // Detect expired/invalid session: session errors OR "Faltan parámetros" (invalid key)
     // "Error en la consulta" is a server-side data error, NOT a session error
-    // NOTA: envivo/estadisticas.ashx devuelve "Faltan parámetros" por bug del server, NO por sesión expirada
-    const isEnvivoEndpoint = url.includes('envivo/');
-    const sessionExpired = !isEnvivoEndpoint && data && data.resultado === 'error' &&
+    const sessionExpired = data && data.resultado === 'error' &&
       (data.error === 'Sesión caducada' || data.error === 'Sesion caducada' ||
        data.error === 'Faltan parámetros' || data.error === 'Faltan parametros');
 
@@ -523,10 +521,11 @@ async function getHorariosJornadas(idFase, idGrupo) {
 
 async function getEstadisticasPartido(idPartido) {
   console.log(`  Obteniendo box score partido ${idPartido.substring(0, 20)}...`);
-  // NOTA: estadisticas.ashx retorna 404, usar envivo/estadisticas.ashx que funciona
+  // NOTA: el APK usa el parámetro 'id_partido' (NO 'id') y NO envía 'accion'
+  // Deobfuscado de PevCargarEstadisticas en main.b3d70c09e1bc11b9.js:
+  //   params = { id_dispositivo, key, id_partido: partido.IdPartido.toString() }
   const data = await apiCall('envivo/estadisticas.ashx', {
-    accion: 'estadisticas',
-    id: idPartido,
+    id_partido: idPartido,
   });
   return data;
 }
