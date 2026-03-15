@@ -113,7 +113,7 @@ class CABBClient:
                 f"{BASE_URL}/{ENDPOINTS['dispositivo']}",
                 data=params,
                 headers=HEADERS,
-                timeout=30,
+                timeout=60,
             )
             resp.raise_for_status()
             result = resp.json()
