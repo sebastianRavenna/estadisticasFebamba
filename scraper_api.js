@@ -423,9 +423,10 @@ async function apiCall(endpoint, params = {}, baseUrl = null) {
   try {
     const data = await postAPI(url, params);
 
-    // Detect expired/invalid session: session errors OR "Faltan parámetros" (invalid key)
-    // "Error en la consulta" is a server-side data error, NOT a session error
-    const sessionExpired = data && data.resultado === 'error' &&
+    // Detect expired/invalid session
+    // Los endpoints /envivo/ devuelven error/500 si el partido no está en vivo - NO es error de sesión
+    const isEnvivoEndpoint = url.includes('envivo/');
+    const sessionExpired = !isEnvivoEndpoint && data && data.resultado === 'error' &&
       (data.error === 'Sesión caducada' || data.error === 'Sesion caducada' ||
        data.error === 'Faltan parámetros' || data.error === 'Faltan parametros');
 
@@ -522,9 +523,6 @@ async function getHorariosJornadas(idFase, idGrupo) {
 /**
  * Decodifica un Id hex-encoded UTF-16LE al string original.
  * Ej: "5A002B004C00..." → "Z+LhPoi5BzD6ntZ1qSj+oQ=="
- * El APK almacena los IDs como strings decodificados y los manda tal cual al servidor.
- * envivo/estadisticas.ashx espera el valor decodificado (500 si se manda el hex crudo).
- * categoria.ashx y otros endpoints sí aceptan el hex crudo.
  */
 function decodeHexUTF16LE(hex) {
   let result = '';
@@ -538,13 +536,13 @@ function decodeHexUTF16LE(hex) {
 
 async function getEstadisticasPartido(idPartido) {
   console.log(`  Obteniendo box score partido ${idPartido.substring(0, 20)}...`);
-  // NOTA: el APK usa 'id_partido' con el valor DECODIFICADO del hex UTF-16LE
-  // Deobfuscado de PevCargarEstadisticas en main.b3d70c09e1bc11b9.js:
-  //   params = { id_dispositivo, key, id_partido: partido.IdPartido.toString() }
-  // partido.IdPartido en el app ya viene decodificado; nosotros lo tenemos en hex.
-  const idDecodificado = decodeHexUTF16LE(idPartido);
+  // envivo/estadisticas.ashx funciona para partidos que se cargaron en vivo en la app.
+  // Retorna "Faltan parámetros" cuando el partido no está en el sistema en vivo (normal).
+  // NOTA: el APK usa id_partido con valor decodificado, pero eso da 500 para partidos
+  // no-live. El parámetro original accion+id funciona para partidos que sí tienen stats.
   const data = await apiCall('envivo/estadisticas.ashx', {
-    id_partido: idDecodificado,
+    accion: 'estadisticas',
+    id: idPartido,
   });
   return data;
 }
